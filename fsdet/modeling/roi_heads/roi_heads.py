@@ -32,6 +32,9 @@ from .fast_rcnn import (
 from ..utils import concat_all_gathered, select_all_gather
 from ..contrastive_loss import (
     SupConLoss,
+    GraphCut,
+    FacilityLocation,
+    LogDet,
     SupConLossV2,
     ContrastiveHead,
     SupConLossWithPrototype,
@@ -414,6 +417,7 @@ class StandardROIHeads(ROIHeads):
         self.box_head = build_box_head(
             cfg, ShapeSpec(channels=in_channels, height=pooler_resolution, width=pooler_resolution)
         )
+        self.is_finetuning = cfg.MODEL.BACKBONE.FREEZE
         self.output_layer_name = cfg.MODEL.ROI_HEADS.OUTPUT_LAYER
         self.box_predictor = ROI_HEADS_OUTPUT_REGISTRY.get(self.output_layer_name)(
             cfg, self.box_head.output_size, self.num_classes, self.cls_agnostic_bbox_reg
@@ -463,7 +467,10 @@ class StandardROIHeads(ROIHeads):
         """
         box_features = self.box_pooler(features, [x.proposal_boxes for x in proposals])  # [None, 256, POOLER_RESOLU, POOLER_RESOLU]
         box_features = self.box_head(box_features)  # [None, FC_DIM]
-        pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
+        if self.is_finetuning:
+            pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features, proposals)
+        else:
+            pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
         del box_features
 
         outputs = FastRCNNOutputs(
@@ -1022,6 +1029,12 @@ class ContrastiveROIHeads(StandardROIHeads):
             self.criterion = SupConLoss(self.temperature, self.contrast_iou_thres, self.reweight_func)
         elif self.loss_version == 'V2':
             self.criterion = SupConLossV2(self.temperature, self.contrast_iou_thres)
+        elif self.loss_version == "GC":
+            self.criterion = GraphCut(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.loss_version == "FL":
+            self.criterion = FacilityLocation(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.loss_version == "LogDet":
+            self.criterion = LogDet(self.temperature, self.contrast_iou_thres, self.reweight_func)
         self.criterion.num_classes = self.num_classes  # to be used in protype version
 
     def _forward_box(self, features, proposals):

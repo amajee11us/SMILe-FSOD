@@ -2,7 +2,7 @@ _BASE_: "../../Base-RCNN-FPN.yaml"
 
 MODEL:
   MASK_ON: False
-  WEIGHTS: "/data/FSCE/checkpoints/COCO/R101/model_reset_surgery.pth"
+  WEIGHTS: "COCO/model_reset_surgery.pth"
   RESNETS:
     DEPTH: 101
 

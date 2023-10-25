@@ -1,7 +1,8 @@
 _BASE_: "../../Base-RCNN-FPN.yaml"
+SEED: 33221810
 
 MODEL:
-  WEIGHTS: "checkpoints/voc/split3/model_reset_surgery.pth"
+  WEIGHTS: "/home/ashutosh_a/FSCE/VOCMODELS/model_third_surgery.pth"
   MASK_ON: False
   RESNETS:
     DEPTH: 101
@@ -39,7 +40,7 @@ INPUT:
     ENABLED: True
 
 DATASETS:
-  TRAIN: ('voc_2007_trainval_all3_5shot',)
+  TRAIN: ('voc_2007_trainval_all3_5shot_seed28',)
   TEST: ('voc_2007_test_all3',)
 
 SOLVER:
@@ -48,12 +49,12 @@ SOLVER:
   GAMMA: 0.3
   STEPS: (8000,10000)
   MAX_ITER: 12000
-  CHECKPOINT_PERIOD: 5000
+  CHECKPOINT_PERIOD: 15000
   WARMUP_ITERS: 200
 
 TEST:
   AUG:
     ENABLED: True
-  EVAL_PERIOD: 700
+  EVAL_PERIOD: 12000
 
-OUTPUT_DIR: "checkpoints/voc/ablation/split3/5shot_CL_IoU"
+OUTPUT_DIR: "checkpoints/voc/ablation/split3/5shot_CL_IoU_seed28"

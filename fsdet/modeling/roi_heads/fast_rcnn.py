@@ -2,8 +2,10 @@
 import logging
 import numpy as np
 import torch
+import math
 from fvcore.nn import smooth_l1_loss
 from torch import nn
+from torch.nn import Parameter
 from torch.nn import functional as F
 
 from fsdet.layers import batched_nms, cat
@@ -650,6 +652,196 @@ class FastRCNNDoubleHeadOutputLayers(FastRCNNOutputLayers):
         scores = self.cls_score(box_cls_feat)
         proposal_deltas = self.bbox_pred(box_loc_feat)
         return scores, proposal_deltas
+
+class AddMarginProduct(nn.Module):
+    r"""Implement of large margin cosine distance: :
+    Args:
+        in_features: size of each input sample
+        out_features: size of each output sample
+        scale_factor: norm of input feature
+        margin: margin
+    :return： (theta) - m
+    """
+
+    def __init__(self, in_features, out_features, margin=0.2):
+        super(AddMarginProduct, self).__init__()
+        # print('*******', out_features)
+        self.num_classes = out_features
+        self.scale_factor = nn.Parameter(torch.ones(1)*20.0)
+        self.margin = margin
+        self.weight = Parameter(torch.FloatTensor(out_features, in_features))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+
+    def one_hot(self, y, num_class):
+        return torch.zeros((len(y), num_class)).to(y.device).scatter_(1, y.unsqueeze(1), 1)
+
+    def forward(self, feature, label=None):
+        # compute the cosine similarity between the feature vector f and the weight vector of each class in the FC layer
+        cosine = F.linear(F.normalize(feature), F.normalize(self.weight))
+
+        # when test, no label, just return
+        if label is None:
+            return cosine * self.scale_factor
+        # add negative margin
+        phi = cosine - self.margin
+        if(label is not None):
+            phi[label == self.num_classes-1] =  cosine[label == self.num_classes -1]
+        output = torch.where(
+            self.one_hot(label, cosine.shape[1]).byte(), phi, cosine)
+        # multiply with scale factor - as all vectors are represented as unit vectors
+        output *= self.scale_factor
+
+        return output
+
+class AttentiveProposalFusion():
+    '''
+    This function does not have parmaeters and does not look at the labels to compute attention
+    '''
+    def __init__(self, alpha=0.8):
+        self.alpha = alpha
+    
+    def __call__(self, p):
+        '''
+        p - proposals produced by the RoI pooling layers
+        output - phi(p)
+        phi(pi) = alpha * pi + (1-alpha)SUM(w_ij * pj) j != i so that we do not calculate the similarity with itself
+        '''
+        # dimension normalization
+        if p.dim() > 2:
+            p = torch.flatten(p, start_dim=1)
+
+        # calculate the norms
+        l2_norm_p = torch.norm(p, p=2, dim=1).unsqueeze(1).expand_as(p)
+        p_normalized = p.div(l2_norm_p + 1e-5)
+
+        # calculate w_ij
+        attn_wts = (torch.matmul(p_normalized, p_normalized.T)).detach()
+        attn = torch.exp(-attn_wts)
+        attn.fill_diagonal_(0)
+        w_normalized = attn.div(torch.sum(attn, dim = 1)+ 1e-5)
+
+        # compute SUM (W_ij * pi)
+        s = torch.matmul(w_normalized, p_normalized) # sum of dis-similarity
+        s_norm = torch.norm(s, p=2, dim=1).unsqueeze(1).expand_as(s)
+        # if A and B are normal and AB != BA then AB may not be normal
+        s_normalized = s.div(s_norm + 1e-5)
+        
+        # Compute APF - phi(p)
+        phi_p = self.alpha * p_normalized + (1 - self.alpha) * s_normalized
+
+        return phi_p
+
+@ROI_HEADS_OUTPUT_REGISTRY.register()
+class APFCosineMarginOutputLayer(nn.Module):
+    def __init__(self, cfg, input_size, num_classes, cls_agnostic_bbox_reg, box_dim=4):
+        """
+        Args:
+            cfg: config
+            input_size (int): channels, or (channels, height, width)
+            num_classes (int): number of foreground classes
+            cls_agnostic_bbox_reg (bool): whether to use class agnostic for bbox regression
+            box_dim (int): the dimension of bounding boxes.
+                Example box dimensions: 4 for regular XYXY boxes and 5 for rotated XYWHA boxes
+        """
+        super(APFCosineMarginOutputLayer, self).__init__()
+        # init APF module
+        self.fuse_proposals = AttentiveProposalFusion()
+        # init cosine similarity margin loss
+        self.cls_score = AddMarginProduct(input_size, num_classes+1) # + 1 due to background
+        # init box predictor
+        num_bbox_reg_classes = 1 if cls_agnostic_bbox_reg else num_classes
+        self.bbox_pred = nn.Linear(input_size, num_bbox_reg_classes * box_dim)
+
+        # init weights - if required
+        for l in [self.bbox_pred]:
+            nn.init.constant_(l.bias, 0)
+        
+    def forward(self, x, proposals_metadata):
+        phi_p = self.fuse_proposals(x)
+
+        # compute cosine similarity with margin output
+        if(proposals_metadata[0].has("gt_boxes")):
+            gt_classes = cat([p.gt_classes for p in proposals_metadata], dim = 0)
+            cos_dist = self.cls_score(phi_p, gt_classes)
+        else:
+            cos_dist = self.cls_score(phi_p)
+        
+        # calculate bbox deltas
+        proposal_deltas = self.bbox_pred(x)
+        return cos_dist, proposal_deltas
+
+@ROI_HEADS_OUTPUT_REGISTRY.register()
+class CosineSimOutputAttentionLayers(nn.Module):
+    """
+    Two outputs
+    (1) proposal-to-detection box regression deltas (the same as
+        the FastRCNNOutputLayers)
+    (2) classification score is based on cosine_similarity
+    """
+
+    def __init__(
+        self, cfg, input_size, num_classes, cls_agnostic_bbox_reg, box_dim=4
+    ):
+        """
+        Args:
+            cfg: config
+            input_size (int): channels, or (channels, height, width)
+            num_classes (int): number of foreground classes
+            cls_agnostic_bbox_reg (bool): whether to use class agnostic for bbox regression
+            box_dim (int): the dimension of bounding boxes.
+                Example box dimensions: 4 for regular XYXY boxes and 5 for rotated XYWHA boxes
+        """
+        super(CosineSimOutputAttentionLayers, self).__init__()
+
+        if not isinstance(input_size, int):
+            input_size = np.prod(input_size)
+
+        # The prediction layer for num_classes foreground classes and one
+        # background class
+        # (hence + 1)
+        self.cls_score = AddMarginProduct(input_size, num_classes+1)#nn.Linear(input_size, num_classes+1, bias=False)
+        # self.scale = cfg.MODEL.ROI_HEADS.COSINE_SCALE
+        # if self.scale == -1:
+        #     # learnable global scaling factor
+        #     self.scale = nn.Parameter(torch.ones(1) * 20.0)
+        num_bbox_reg_classes = 1 if cls_agnostic_bbox_reg else num_classes
+        self.bbox_pred = nn.Linear(input_size, num_bbox_reg_classes * box_dim)
+
+        nn.init.normal_(self.cls_score.weight, std=0.01)
+        nn.init.normal_(self.bbox_pred.weight, std=0.001)
+        for l in [self.bbox_pred]:
+            nn.init.constant_(l.bias, 0)
+
+    def forward(self, x, proposals):
+        if x.dim() > 2:
+            x = torch.flatten(x, start_dim=1)
+
+        # normalize the input x along the `input_size` dimension
+        x_norm = torch.norm(x, p=2, dim=1).unsqueeze(1).expand_as(x)
+        x_normalized = x.div(x_norm + 1e-5)
+        attn_wts = (torch.matmul(x_normalized, x_normalized.T)).detach()
+        attn = torch.exp(-attn_wts)
+        attn.fill_diagonal_(0)
+        att_norm = attn.div(torch.sum(attn, dim = 1)+ 1e-5)
+        summation = torch.matmul(att_norm, x_normalized)
+        s_norm = torch.norm(summation, p=2, dim=1).unsqueeze(1).expand_as(summation)
+        s_normalised = summation.div(s_norm + 1e-5)
+        x_new = 0.8*x_normalized + 0.2*s_normalised
+        if(proposals[0].has("gt_boxes")):
+            gt_classes = cat([p.gt_classes for p in proposals], dim = 0)
+            cos_dist = self.cls_score(x_new, gt_classes)
+        else:
+            cos_dist = self.cls_score(x_new)
+
+        # normalize weight
+        # temp_norm = torch.norm(self.cls_score.weight.data,
+        #                        p=2, dim=1).unsqueeze(1).expand_as(
+        #     self.cls_score.weight.data)
+        # self.cls_score.weight.data = self.cls_score.weight.data.div(temp_norm + 1e-5)
+        # cos_dist = self.cls_score(x_new)
+        # scores = self.scale * cos_dist
+        proposal_deltas = self.bbox_pred(x)
+        return cos_dist, proposal_deltas
 
 
 @ROI_HEADS_OUTPUT_REGISTRY.register()

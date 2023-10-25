@@ -26,6 +26,8 @@ from .lvis import register_lvis_instances
 from .meta_lvis import register_meta_lvis
 from .pascal_voc import register_pascal_voc
 from .meta_pascal_voc import register_meta_pascal_voc
+from .idd import register_idd_detection
+from .meta_idd import register_meta_idd
 from .builtin_meta import _get_builtin_metadata
 
 
@@ -226,7 +228,93 @@ def register_all_pascal_voc(root="datasets"):
                                  keepclasses, sid)
         MetadataCatalog.get(name).evaluator_type = "pascal_voc"
 
+# ==== Predefined splits for IDD_Detection ===========
+def register_all_idd_detection(root="datasets"):
+    SPLITS = [
+        ("idd_2019_trainval", "IDD_Detection", "trainval"),
+        ("idd_2019_train", "IDD_Detection", "train"),
+        ("idd_2019_val", "IDD_Detection", "val"),
+        ("idd_2019_test", "IDD_Detection", "test"),
+    ]
+    for name, dirname, split in SPLITS:
+        year = 2019
+        register_idd_detection(name, os.path.join(root, dirname), split, year)
+        MetadataCatalog.get(name).evaluator_type = "idd_detection"
+    
+    # register meta datasets
+    METASPLITS = [
+        ("idd_2019_trainval_base1", "IDD_Detection", "train", "base1", 1),
+        ("idd_2019_trainval_base2", "IDD_Detection", "train", "base2", 2),
+        ("idd_2019_trainval_base3", "IDD_Detection", "train", "base3", 3),
+        ("idd_2019_trainval_all1", "IDD_Detection", "train", "base_novel_1", 1),
+        ("idd_2019_trainval_all2", "IDD_Detection", "train", "base_novel_2", 2),
+        ("idd_2019_trainval_all3", "IDD_Detection", "train", "base_novel_3", 3),
+        ("idd_2019_val_base1", "IDD_Detection", "val", "base1", 1),
+        ("idd_2019_val_base2", "IDD_Detection", "val", "base2", 2),
+        ("idd_2019_val_base3", "IDD_Detection", "val", "base3", 3),
+        ("idd_2019_val_novel1", "IDD_Detection", "val", "novel1", 1),
+        ("idd_2019_val_novel2", "IDD_Detection", "val", "novel2", 2),
+        ("idd_2019_val_novel3", "IDD_Detection", "val", "novel3", 3),
+        ("idd_2019_val_all1", "IDD_Detection", "val", "base_novel_1", 1),
+        ("idd_2019_val_all2", "IDD_Detection", "val", "base_novel_2", 2),
+        ("idd_2019_val_all3", "IDD_Detection", "val", "base_novel_3", 3),
+    ]
+
+    # register small meta datasets for fine-tuning stage
+    for prefix in ["all", "novel"]:
+        for sid in range(1, 4):
+            for shot in [5, 10, 30]:
+                for year in [2019]:
+                    for seed in range(100):
+                        seed = '' if seed == 0 else '_seed{}'.format(seed)
+                        name = "idd_{}_trainval_{}{}_{}shot{}".format(
+                            year, prefix, sid, shot, seed)
+                        dirname = "IDD_Detection"
+                        img_file = "{}_{}shot_split_{}_trainval".format(
+                            prefix, shot, sid)
+                        keepclasses = "base_novel_{}".format(sid) \
+                            if prefix == 'all' else "novel{}".format(sid)
+                        METASPLITS.append(
+                            (name, dirname, img_file, keepclasses, sid))
+
+    for name, dirname, split, keepclasses, sid in METASPLITS:
+        year = 2019
+        register_meta_idd(name,
+                        _get_builtin_metadata("idd_fewshot"),
+                        os.path.join(root, dirname), split, year,
+                        keepclasses, sid)
+        MetadataCatalog.get(name).evaluator_type = "idd_detection"
+
+
+    # register fine-tune dataset with more base (3ploidy)
+    WITH_MORE_BASE = []
+    ploidy = 3
+    for prefix in ["all", "novel"]:
+        for sid in range(1, 4):
+            for shot in [5, 10]:
+                for year in [2019]:
+                    for seed in range(100):
+                        seed = '' if seed == 0 else '_seed{}'.format(seed)
+                        name = "idd_2019_{}_trainval_{}{}_{}shot{}_{}ploidy".format(
+                            year, prefix, sid, shot, seed, ploidy)
+                        dirname = "IDD_Detection"
+                        img_file = "{}_{}shot_split_{}_trainval".format(
+                            prefix, shot, sid)
+                        keepclasses = "base_novel_{}".format(sid) \
+                            if prefix == 'all' else "novel{}".format(sid)
+                        WITH_MORE_BASE.append(
+                            (name, dirname, img_file, keepclasses, sid))
+
+    for name, dirname, split, keepclasses, sid in WITH_MORE_BASE:
+        year = 2019
+        register_meta_idd(name,
+                        _get_builtin_metadata("idd_fewshot"),
+                        os.path.join(root, dirname), split, year,
+                        keepclasses, sid)
+        MetadataCatalog.get(name).evaluator_type = "idd_detection"
+
 # Register them all under "./datasets"
 register_all_coco()
 register_all_lvis()
 register_all_pascal_voc()
+register_all_idd_detection()

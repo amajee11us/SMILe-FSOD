@@ -195,6 +195,34 @@ PASCAL_VOC_BASE_CATEGORIES = {
         'tvmonitor'],
 }
 
+# IDD categories
+# 1 - IDD-OS Open-Set dataset
+# 2 - IDD-10 10 class FSOD setting with 3 novel classes
+# 3 - IDD-10 10 class FSOD setting with 3 novel classes
+
+IDD_ALL_CATEGORIES = {
+    1: ['motorcycle', 'rider', 'person', 'car', 'autorickshaw', 'truck', 'bus', 'bicycle',
+        'traffic sign', 'traffic light', 'street cart', 'tractor', 'water tanker', 'excavator'],
+    2: ['motorcycle', 'rider', 'person', 'car', 'autorickshaw', 
+        'traffic sign', 'traffic light', 'bicycle', 'bus', 'truck'],
+    3: ['rider', 'person', 'car',  'traffic sign', 'traffic light', 
+        'bicycle', 'bus', 'autorickshaw', 'motorcycle', 'truck'],
+}
+
+IDD_NOVEL_CATEGORIES = {
+    1: ['street cart', 'tractor', 'water tanker', 'excavator'],
+    2: ['bicycle', 'bus', 'truck'],
+    3: ['autorickshaw', 'motorcycle', 'truck'],
+}
+
+IDD_BASE_CATEGORIES = {
+    1: ['motorcycle', 'rider', 'person', 'car', 'autorickshaw', 'truck', 'bus', 'bicycle',
+        'traffic sign', 'traffic light'],
+    2: ['motorcycle', 'rider', 'person', 'car', 'autorickshaw', 
+        'traffic sign', 'traffic light'],
+    3: ['rider', 'person', 'car',  'traffic sign', 'traffic light', 
+        'bicycle', 'bus'],
+}
 
 def _get_coco_instances_meta():
     thing_ids = [k["id"] for k in COCO_CATEGORIES if k["isthing"] == 1]
@@ -264,6 +292,13 @@ def _get_pascal_voc_fewshot_instances_meta():
     }
     return ret
 
+def _get_idd_fewshot_instances_meta():
+    ret = {
+        "thing_classes": IDD_ALL_CATEGORIES,
+        "novel_classes": IDD_NOVEL_CATEGORIES,
+        "base_classes": IDD_BASE_CATEGORIES,
+    }
+    return ret
 
 def _get_builtin_metadata(dataset_name):
     if dataset_name == "coco":
@@ -276,4 +311,6 @@ def _get_builtin_metadata(dataset_name):
         return _get_lvis_fewshot_instances_meta_v0_5()
     elif dataset_name == "pascal_voc_fewshot":
         return _get_pascal_voc_fewshot_instances_meta()
+    elif dataset_name == "idd_fewshot":
+        return _get_idd_fewshot_instances_meta()
     raise KeyError("No built-in metadata for dataset {}".format(dataset_name))

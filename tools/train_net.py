@@ -20,7 +20,7 @@ import os
 import fsdet.utils.comm as comm
 from fsdet.checkpoint import DetectionCheckpointer
 from fsdet.config import get_cfg, set_global_cfg
-from fsdet.data import MetadataCatalog, build_detection_train_loader
+from fsdet.data import MetadataCatalog #, build_detection_train_loader
 from fsdet.engine import (
     DefaultTrainer,
     default_argument_parser,
@@ -32,6 +32,7 @@ from fsdet.evaluation import (
     DatasetEvaluators,
     LVISEvaluator,
     PascalVOCDetectionEvaluator,
+    IDDDetectionEvaluator,
     verify_results,
 )
 
@@ -62,6 +63,8 @@ class Trainer(DefaultTrainer):
             evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
         if evaluator_type == "pascal_voc":
             return PascalVOCDetectionEvaluator(dataset_name)
+        if evaluator_type == "idd_detection":
+            return IDDDetectionEvaluator(dataset_name)
         if evaluator_type == "lvis":
             return LVISEvaluator(dataset_name, cfg, True, output_folder)
         if len(evaluator_list) == 0:
@@ -74,12 +77,12 @@ class Trainer(DefaultTrainer):
             return evaluator_list[0]
         return DatasetEvaluators(evaluator_list)
 
-    @classmethod
-    def build_train_loader(cls, cfg):
-        mapper = None
-        # if cfg.INPUT.USE_ALBUMENTATIONS:
-        #     mapper = AlbumentationMapper(cfg, is_train=True)
-        return build_detection_train_loader(cfg, mapper=mapper)
+    # @classmethod
+    # def build_train_loader(cls, cfg):
+    #     mapper = None
+    #     # if cfg.INPUT.USE_ALBUMENTATIONS:
+    #     #     mapper = AlbumentationMapper(cfg, is_train=True)
+    #     return build_detection_train_loader(cfg, mapper=mapper)
 
 def setup(args):
     """

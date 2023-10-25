@@ -32,6 +32,10 @@ def parse_args():
                         help='For COCO models')
     parser.add_argument('--lvis', action='store_true',
                         help='For LVIS models')
+    parser.add_argument('--idd_10', action='store_true',
+                        help='For IDD-10 models')
+    parser.add_argument('--idd_os', action='store_true',
+                        help='For IDD-OS models')
     args = parser.parse_args()
     return args
 
@@ -241,6 +245,11 @@ if __name__ == '__main__':
         ALL_CLASSES = sorted(BASE_CLASSES + NOVEL_CLASSES)
         IDMAP = {v:i for i, v in enumerate(ALL_CLASSES)}
         TAR_SIZE = 1230
+    elif args.idd_10:
+        # IDD-10 dataset both splits
+        TAR_SIZE = 10
+    elif args.idd_os:
+        TAR_SIZE = 14
     else:
         # VOC
         TAR_SIZE = 20

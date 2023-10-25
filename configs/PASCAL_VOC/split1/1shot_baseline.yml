@@ -1,7 +1,8 @@
 _BASE_: "../../Base-RCNN-FPN.yaml"
+SEED: 48708537
 
 MODEL:
-  WEIGHTS: "/data/FSCE/checkpoints/PASCAL_VOC/split1/model_reset_surgery.pth"
+  WEIGHTS: "checkpoints/voc/faster_rcnn/faster_rcnn_R_101_FPN_base1/model_reset_surgery.pth"
   MASK_ON: False
   RESNETS:
     DEPTH: 101
@@ -30,7 +31,7 @@ INPUT:
   MIN_SIZE_TEST: 800
 
 DATASETS:
-  TRAIN: ('voc_2007_trainval_all1_1shot',)
+  TRAIN: ('voc_2007_trainval_all1_1shot_seed28',)
   TEST: ('voc_2007_test_all1',)
 
 SOLVER:
@@ -42,6 +43,6 @@ SOLVER:
   WARMUP_ITERS: 20
 
 TEST:
-  EVAL_PERIOD: 700
+  EVAL_PERIOD: 6000
 
-OUTPUT_DIR: "checkpoints/voc/1shot_baseline"
+OUTPUT_DIR: "checkpoints/voc/ablation/split1/1shot_baseline_seed28"

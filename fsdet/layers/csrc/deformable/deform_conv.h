@@ -3,7 +3,9 @@
 #include <torch/types.h>
 
 namespace fsdet {
-
+#ifndef AT_CHECK
+#define AT_CHECK TORCH_CHECK 
+#endif
 #ifdef WITH_CUDA
 int deform_conv_forward_cuda(
     at::Tensor input,

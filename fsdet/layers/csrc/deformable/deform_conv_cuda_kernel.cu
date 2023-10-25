@@ -74,7 +74,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <THC/THCAtomics.cuh>
-
+#ifndef AT_CHECK
+#define AT_CHECK TORCH_CHECK 
+#endif
 using namespace at;
 
 #define CUDA_KERNEL_LOOP(i, n)                                 \

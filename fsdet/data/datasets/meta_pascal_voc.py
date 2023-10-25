@@ -46,6 +46,7 @@ def load_filtered_voc_instances(
     """
     use_more_base = 'ploidy' in name
     is_shots = "shot" in name
+    print('***********')
     if is_shots:
         fileids = {}
         split_dir = os.path.join("datasets", "vocsplit")
@@ -57,7 +58,7 @@ def load_filtered_voc_instances(
             shot = name.split('_')[-3].split('shot')[0]
             seed = int(name.split('_')[-2].replace('seed', ''))
             split_dir = os.path.join(split_dir, "seed{}".format(seed))
-        else:
+        else:            
             if "seed" in name:
                 shot = name.split('_')[-2].split('shot')[0]
                 seed = int(name.split('_seed')[-1])
@@ -68,7 +69,7 @@ def load_filtered_voc_instances(
         for cls in classnames:
             with PathManager.open(os.path.join(split_dir,
                     "box_{}shot_{}_train.txt".format(shot, cls))) as f:
-                fileids_ = np.loadtxt(f, dtype=np.str).tolist()
+                fileids_ = np.loadtxt(f, dtype=str).tolist()
                 if isinstance(fileids_, str):
                     fileids_ = [fileids_]
                 fileids_ = [fid.split('/')[-1].split('.jpg')[0] \
@@ -84,7 +85,7 @@ def load_filtered_voc_instances(
     else:
         with PathManager.open(os.path.join(dirname, "ImageSets", "Main",
                                            split + ".txt")) as f:
-            fileids = np.loadtxt(f, dtype=np.str)
+            fileids = np.loadtxt(f, dtype=str)
 
     dicts = []
     if is_shots:

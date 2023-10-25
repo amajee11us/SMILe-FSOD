@@ -14,7 +14,9 @@
 
 #include <cmath>
 #include <vector>
-
+#ifndef AT_CHECK
+#define AT_CHECK TORCH_CHECK 
+#endif
 namespace fsdet {
 
 void deformable_im2col(

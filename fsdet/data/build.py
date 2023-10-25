@@ -76,7 +76,7 @@ def print_instances_class_histogram(dataset_dicts, class_names):
     """
     num_classes = len(class_names)
     hist_bins = np.arange(num_classes + 1)
-    histogram = np.zeros((num_classes,), dtype=np.int)
+    histogram = np.zeros((num_classes,), dtype=int)
     for entry in dataset_dicts:
         annos = entry["annotations"]
         classes = [x["category_id"] for x in annos if not x.get("iscrowd", 0)]
@@ -172,12 +172,15 @@ def get_detection_dataset_dicts(dataset_names, filter_empty=True):
         dataset_dicts = filter_images_with_only_crowd_annotations(dataset_dicts)
 
     if has_instances:
-        try:
-            class_names = MetadataCatalog.get(dataset_names[0]).thing_classes
-            check_metadata_consistency("thing_classes", dataset_names)
-            print_instances_class_histogram(dataset_dicts, class_names)
-        except AttributeError:  # class names are not available for this dataset
-            pass
+        class_names = MetadataCatalog.get(dataset_names[0]).thing_classes
+        check_metadata_consistency("thing_classes", dataset_names)
+        print_instances_class_histogram(dataset_dicts, class_names)
+        # try:
+        #     class_names = MetadataCatalog.get(dataset_names[0]).thing_classes
+        #     check_metadata_consistency("thing_classes", dataset_names)
+        #     print_instances_class_histogram(dataset_dicts, class_names)
+        # except AttributeError:  # class names are not available for this dataset
+        #     pass
     return dataset_dicts
 
 
