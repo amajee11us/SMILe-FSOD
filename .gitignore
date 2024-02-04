@@ -203,3 +203,8 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+datasets/VOC2007
+datasets/VOC2012
+datasets/coco
+datasets/lvis
+datasets/IDD_Detection
