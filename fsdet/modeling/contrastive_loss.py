@@ -427,6 +427,15 @@ class LogDet(nn.Module):
         """
         assert features.shape[0] == labels.shape[0] == ious.shape[0]
 
+        keep = ious >= self.iou_threshold
+        coef = self._get_reweight_func(self.reweight_func)(ious)
+        coef = coef[keep]
+
+        features = features[keep]
+        labels = labels[keep]
+
+        assert features.shape[0] == labels.shape[0]
+
         if len(labels.shape) == 1:
             labels = labels.reshape(-1, 1)
         
@@ -441,6 +450,7 @@ class LogDet(nn.Module):
 
         
         similarity = torch.matmul(features, features.T)
+        similarity = similarity * coef
 
         # get unique vectors 
         labelSet = torch.unique(labels, sorted=True)
@@ -457,17 +467,8 @@ class LogDet(nn.Module):
             log_prob +=  torch.logdet(S_label + (0.5 * torch.eye(S_label.shape[0]).to(device))) 
         log_prob -= ground_set_det
 
-        
-        per_label_log_prob = log_prob
+        loss = log_prob
 
-        keep = ious >= self.iou_threshold
-        per_label_log_prob = per_label_log_prob[keep]
-        loss = per_label_log_prob
-
-        coef = self._get_reweight_func(self.reweight_func)(ious)
-        coef = coef[keep]
-
-        loss = loss * coef
         return loss.mean()
 
     @staticmethod
