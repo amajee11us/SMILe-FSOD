@@ -13,6 +13,7 @@ import torch
 from fsdet.data import MetadataCatalog
 from fsdet.utils import comm
 from fsdet.utils.logger import create_small_table
+from fsdet.utils.conf_matrix_plotter import ConfusionMatrix
 
 from .evaluator import DatasetEvaluator
 
@@ -49,6 +50,9 @@ class PascalVOCDetectionEvaluator(DatasetEvaluator):
         self._cpu_device = torch.device("cpu")
         self._logger = logging.getLogger(__name__)
 
+        # plotter for confusion matrices
+        self.confusion_matrix = ConfusionMatrix(self._dataset_name, len(self._class_names))
+
     def reset(self):
         self._predictions = defaultdict(list)  # class name -> list of prediction strings
 
@@ -67,6 +71,21 @@ class PascalVOCDetectionEvaluator(DatasetEvaluator):
                 self._predictions[cls].append(
                     f"{image_id} {score:.3f} {xmin:.1f} {ymin:.1f} {xmax:.1f} {ymax:.1f}"
                 )
+            # Preprocess the detections
+            detections = np.hstack([
+                boxes,
+                np.array(scores).reshape(-1, 1),
+                np.array(classes).reshape(-1, 1)
+            ])
+            # Retrieve ground truth annotations for the current image
+            gt_annotations = parse_rec(self._anno_file_template.format(image_id))
+            labels = np.array([
+                [self._class_names.index(obj["name"]), obj["bbox"][0], obj["bbox"][1], obj["bbox"][2], obj["bbox"][3]]
+                for obj in gt_annotations if not obj["difficult"]
+            ])
+
+            # Update the confusion matrix
+            self.confusion_matrix.process_batch(detections, labels)
 
     def evaluate(self):
         """
@@ -145,6 +164,14 @@ class PascalVOCDetectionEvaluator(DatasetEvaluator):
 
         self._logger.info("Evaluate per-class mAP50:\n"+create_small_table(per_class_res))
         self._logger.info("Evaluate overall bbox:\n"+create_small_table(ret["bbox"]))
+
+        # Plot the confusion matrix
+        confusion_matrix = self.confusion_matrix.return_matrix()
+        # print("Saving Confusion Matrix at :{}\n".format("checkpoints/voc/conf_matrices/meta_conf.npy"))
+        # TODO : Fix the path for saving the confusion matrix
+        # np.save("checkpoints/voc/conf_matrices/meta_conf_{}.npy".format(self.confusion_matrix.count), confusion_matrix)
+        self.confusion_matrix.save_conf_matrix()
+
         return ret
 
 
