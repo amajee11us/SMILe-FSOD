@@ -1058,7 +1058,10 @@ class ContrastiveROIHeads(StandardROIHeads):
     def _forward_box(self, features, proposals):
         box_features = self.box_pooler(features, [x.proposal_boxes for x in proposals])
         box_features = self.box_head(box_features)  # [None, FC_DIM]
-        pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
+        if self.is_finetuning:
+            pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features, proposals)
+        else:
+            pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
         box_features_contrast = self.encoder(box_features)
         del box_features
 
