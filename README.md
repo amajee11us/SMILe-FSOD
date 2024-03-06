@@ -1,35 +1,19 @@
-# FSCE: Few-Shot Object Detection via Contrastive Proposal Encoding (CVPR 2021)
+# SMILe: Leveraging Submodular Mutual Information For Robust Few-Shot Object Detection
 
-[![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/ucbdrive/few-shot-object-detection.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/ucbdrive/few-shot-object-detection/context:python)
-This repo contains the implementation of our *state-of-the-art* fewshot object detector, described in our CVPR 2021 paper, [FSCE: Few-Shot Object Detection via Contrastive Proposal Encoding](https://arxiv.org/abs/2103.05950). FSCE is built upon the codebase [FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags), which released by an ICML 2020 paper [Frustratingly Simple Few-Shot Object Detection](https://arxiv.org/abs/2003.06957).
+This repo contains the implementation of proposed SMILe framework which introduces a combinatorial viewpoint in Few-Shot Object Detection. SMILe is built upon the codebase [FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags).
 
-![FSCE Figure](https://i.imgur.com/zrOSKoi.png)
+![SMILe Figure](demo/images/overview_smile.png)
 
-### Bibtex
-
-```
-@inproceedings{FSCEv1,
- author = {Sun, Bo and Li, Banghuai and Cai, Shengcai and Yuan, Ye and Zhang, Chi},
- title = {FSCE: Few-Shot Object Detection via Contrastive Proposal Encoding},
- booktitle = {Proceedings of the IEEE conference on computer vision and pattern recognition (CVPR)},
- pages    = {TBD},
- month = {June},
- year = {2021}
-}
-```
-
-Arxiv: https://arxiv.org/abs/2103.05950
-
-## Contact
-
-```
-If you have any questions, please contact Bo Sun (bos [at] usc.edu) or Banghuai Li(libanghuai [at] megvii.com)
-```
-
-
+Confusion and forgetting of object classes have been challenges of prime interest in Few-Shot Object Detection (FSOD).
+To overcome these pitfalls in metric learning based FSOD techniques, we introduce a novel Submodular Mutual Information Learning (**SMILe**) framework which adopts combinatorial mutual information functions to enforce the creation of tighter and discriminative feature clusters in FSOD.
+Our proposed approach generalizes to several existing approaches in FSOD, agnostic of the backbone architecture demonstrating elevated performance gains.
+A paradigm shift from instance based objective functions to combinatorial objectives in SMILe naturally preserves the diversity within an object class resulting in reduced forgetting when subjected to few training examples.
+Furthermore, the application of mutual information between the already learnt (base) and newly added (novel) objects ensures sufficient separation between base and novel classes, minimizing the effect of class confusion.
+Experiments on popular FSOD benchmarks, PASCAL-VOC and MS-COCO show that our approach generalizes to State-of-the-Art (SoTA) approaches improving their novel class performance by up to 5.7\% (3.3 $mAP$ points) and 5.4\% (2.6 $mAP$ points) on the 10-shot setting of VOC (split 3) and 30-shot setting of COCO datasets respectively. 
+Our experiments also demonstrate better retention of base class performance and up to $2\times$ faster convergence over existing approaches agnostic of the underlying architecture.
 
 ## Installation
-
+The installation instructions are similar to FsDet and FSCE.
 FsDet is built on [Detectron2](https://github.com/facebookresearch/detectron2). But you don't need to build detectron2 seperately as this codebase is self-contained. You can follow the instructions below to install the dependencies and build `FsDet`. FSCE functionalities are implemented as `class`and `.py` scripts in FsDet which therefore requires no extra build efforts. 
 
 **Dependencies**
@@ -48,9 +32,6 @@ FsDet is built on [Detectron2](https://github.com/facebookresearch/detectron2). 
 ```bash
 python setup.py build develop  # you might need sudo
 ```
-
-
-
 Note: you may need to rebuild FsDet after reinstalling a different build of PyTorch.
 
 
@@ -67,36 +48,6 @@ The datasets and data splits are built-in, simply make sure the directory struct
 
 The default seed that is used to report performace in research papers can be found [here](http://dl.yf.io/fs-det/datasets/).
 
-
-
-## Code Structure
-
-The code structure follows Detectron2 v0.1.* and fsdet. 
-
-- **configs**: Configuration  files (`YAML`) for train/test jobs. 
-- **datasets**: Dataset files (see [Data Preparation](#data-preparation) for more details)
-- **fsdet**
-  - **checkpoint**: Checkpoint code.
-  - **config**: Configuration code and default configurations.
-  - **data**: Dataset code.
-  - **engine**: Contains training and evaluation loops and hooks.
-  - **evaluation**: Evaluation code for different datasets.
-  - **layers**: Implementations of different layers used in models.
-  - **modeling**: Code for models, including backbones, proposal networks, and prediction heads.
-    - The majority of FSCE functionality are implemtended in`modeling/roi_heads/* `, `modeling/contrastive_loss.py`, and  `modeling/utils.py`
-    - So one can first make sure  [FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags) runs smoothly, and then refer to FSCE implementations and configurations. 
-  - **solver**: Scheduler and optimizer code.
-  - **structures**: Data types, such as bounding boxes and image lists.
-  - **utils**: Utility functions.
-- **tools**
-  - **train_net.py**: Training script.
-  - **test_net.py**: Testing script.
-  - **ckpt_surgery.py**: Surgery on checkpoints.
-  - **run_experiments.py**: Running experiments across many seeds.
-  - **aggregate_seeds.py**: Aggregating results from many seeds.
-
-
-
 ## Train & Inference
 
 ### Training
@@ -106,7 +57,7 @@ We follow the eaact training procedure of FsDet and we use **random initializati
 #### 1. Stage 1: Training base detector.
 
 ```
-python tools/train_net.py --num-gpus 8 \
+python tools/train_net.py --num-gpus 4 \
         --config-file configs/PASCAL_VOC/base-training/R101_FPN_base_training_split1.yml
 ```
 
@@ -123,11 +74,11 @@ This step will create a `model_surgery.pth` from` model_final.pth`.
 
 Don't forget the `--coco` and `--lvis`options when work on the COCO and LVIS datasets, see `ckpt_surgery.py` for all arguments details.
 
-#### 3. Stage 2: Fine-tune for novel data.
+#### 3. Stage 2: Few-Shot Adaptation on novel data.
 
 ```
-python tools/train_net.py --num-gpus 8 \
-        --config-file configs/PASCAL_VOC/split1/10shot_CL_IoU.yml \
+python tools/train_net.py --num-gpus 4 \
+        --config-file configs/PASCAL_VOC/split1/split1_10shot_FSCE_FLQMI_IoU_0.7_weight_0.5.yaml \
         --opts MODEL.WEIGHTS WEIGHTS_PATH
 ```
 
@@ -139,7 +90,7 @@ To evaluate the trained models, run
 
 ```angular2html
 python tools/test_net.py --num-gpus 8 \
-        --config-file configs/PASCAL_VOC/split1/10shot_CL_IoU.yml \
+        --config-file configs/PASCAL_VOC/split1/split1_10shot_FSCE_FLQMI_IoU_0.7_weight_0.5.yaml \
         --eval-only
 ```
 
@@ -154,15 +105,19 @@ For ease of training and evaluation over multiple runs, fsdet provided several h
 You can use `tools/run_experiments.py` to do the training and evaluation. For example, to experiment on 30 seeds of the first split of PascalVOC on all shots, run
 
 ```angular2html
-python tools/run_experiments.py --num-gpus 8 \
-        --shots 1 2 3 5 10 --seeds 0 30 --split 1
+python tools/run_experiments.py --num-gpus 4 \
+        --shots 1 5 10 --seeds 0 10 --split 1
 ```
 
-After training and evaluation, you can use `tools/aggregate_seeds.py` to aggregate the results over all the seeds to obtain one set of numbers. To aggregate the 3-shot results of the above command, run
+### Acknowledgement
+We thank the authors of the below mentioned contributions. 
+Most of our code is adapted from the FSCE approach (CVPR 2021).
 
-```angular2html
-python tools/aggregate_seeds.py --shots 3 --seeds 30 --split 1 \
-        --print --plot
-```
+Frustratingly Simple Few-Shot Object Detection ([FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags))
+
+Few-Shot Object Detection via Contrastive Proposal Encoding ([FSCE](https://github.com/megvii-research/FSCE))
+
+Attention Guided Cosine Margin For Overcoming Class-Imbalance in Few-Shot Road Object Detection ([AGCM](https://arxiv.org/abs/2111.06639))
+
 
 
