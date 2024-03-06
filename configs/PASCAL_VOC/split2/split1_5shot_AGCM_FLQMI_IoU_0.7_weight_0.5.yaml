@@ -1,14 +1,14 @@
 _BASE_: "../../Base-RCNN-FPN.yaml"
 
 MODEL:
-  WEIGHTS: "/data/FSCE/checkpoints/PASCAL_VOC/split1/model_reset_surgery.pth"
+  WEIGHTS: "checkpoints/voc/faster_rcnn/faster_rcnn_R_101_FPN_base2/model_reset_surgery.pth"
   MASK_ON: False
   RESNETS:
     DEPTH: 101
 
   BACKBONE:
-    FREEZE: False
-    FREEZE_AT: 5
+    FREEZE: True #False
+    # FREEZE_AT: 5
 
   PROPOSAL_GENERATOR:
     FREEZE: False
@@ -18,20 +18,21 @@ MODEL:
   ROI_HEADS:
     NAME: "ContrastiveROIHeads"
     NUM_CLASSES: 20
-    OUTPUT_LAYER: "CosineSimOutputLayers"
+    OUTPUT_LAYER: "APFCosineMarginOutputLayer" #"CosineSimOutputLayers" # Bare-bone_cos_sim_output
     FREEZE_FEAT: False
     BATCH_SIZE_PER_IMAGE: 256
-    # SCORE_THRESH_TEST: 0.0
 
   ROI_BOX_HEAD:
     CONTRASTIVE_BRANCH:
-      TEMPERATURE: 0.5
+      LOSS_VERSION: "FL+FLMI"
+      TEMPERATURE: 0.7
       LOSS_WEIGHT: 0.5
       DECAY:
         ENABLED: True
         STEPS: [6000, 10000]
         RATE: 0.5
-      IOU_THRESHOLD: 0.8  # high credibility proposals provide consistency
+      IOU_THRESHOLD: 0.7  # high credibility proposals provide consistency
+SEED: 37756442
 
 INPUT:
   MIN_SIZE_TRAIN: (480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800)
@@ -40,8 +41,8 @@ INPUT:
     ENABLED: True
 
 DATASETS:
-  TRAIN: ('voc_2007_trainval_all1_10shot',)
-  TEST: ('voc_2007_test_all1',)
+  TRAIN: ('voc_2007_trainval_all2_5shot',)
+  TEST: ('voc_2007_test_all2',)
 
 SOLVER:
   IMS_PER_BATCH: 16
@@ -57,4 +58,4 @@ TEST:
     ENABLED: True
   EVAL_PERIOD: 700
 
-OUTPUT_DIR: "checkpoints/voc/ablation/tau/10shot_CL_IoU_T05_D128"
+OUTPUT_DIR: "checkpoints/voc/faster_rcnn/split2_5shot_AGCM_FLMI_IoU_0.7_weight_0.5"
