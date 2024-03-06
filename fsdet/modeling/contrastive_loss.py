@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import fvcore.nn.weight_init as weight_init
+from fsdet.modeling.utils import soft_max, soft_min, similarity_kernel
 
 
 class ContrastiveHead(nn.Module):
@@ -468,6 +469,211 @@ class LogDet(nn.Module):
         log_prob -= ground_set_det
 
         loss = log_prob
+
+        return loss.mean()
+
+    @staticmethod
+    def _get_reweight_func(option):
+        def trivial(iou):
+            return torch.ones_like(iou)
+        def exp_decay(iou):
+            return torch.exp(iou) - 1
+        def linear(iou):
+            return iou
+
+        if option == 'none':
+            return trivial
+        elif option == 'linear':
+            return linear
+        elif option == 'exp':
+            return exp_decay
+
+class FLMI(nn.Module):
+    
+    def __init__(self, temperature=0.2, 
+                       iou_threshold=0.5, 
+                       reweight_func='none',
+                       lamda=1.0):
+        '''Args:
+            tempearture: a constant to be divided by consine similarity to enlarge the magnitude
+            iou_threshold: consider proposals with higher credibility to increase consistency.
+        '''
+        super().__init__()
+        self.temperature = temperature
+        self.iou_threshold = iou_threshold
+        self.reweight_func = reweight_func
+        self.lamda = lamda
+        self.base_temperature = 0.07
+
+        self.num_classes = 20
+        self.num_novel = 5
+
+    def forward(self, features, labels, ious):
+        """
+        Args:
+            features (tensor): shape of [M, K] where M is the number of features to be compared,
+                and K is the feature_dim.   e.g., [8192, 128]
+            labels (tensor): shape of [M].  e.g., [8192]
+        """
+        assert features.shape[0] == labels.shape[0] == ious.shape[0]
+
+        # Mine for the novel class features
+        keep_novel = labels >= (self.num_classes - self.num_novel)
+        feat_novel = features[keep_novel]
+        
+        if len(labels.shape) == 1:
+            labels = labels.reshape(-1, 1)
+
+        similarity = torch.div(
+            torch.matmul(feat_novel, features.T), self.temperature)
+        # for numerical stability
+        sim_row_max, _ = torch.max(similarity, dim=1, keepdim=True)
+        similarity = similarity - sim_row_max.detach()
+        
+        loss = soft_max(similarity, axis=0).sum(0) + \
+               self.lamda * soft_max(similarity, axis=1).sum(1)
+
+        return loss.mean()
+
+    @staticmethod
+    def _get_reweight_func(option):
+        def trivial(iou):
+            return torch.ones_like(iou)
+        def exp_decay(iou):
+            return torch.exp(iou) - 1
+        def linear(iou):
+            return iou
+
+        if option == 'none':
+            return trivial
+        elif option == 'linear':
+            return linear
+        elif option == 'exp':
+            return exp_decay
+
+class GCMI(nn.Module):
+    
+    def __init__(self, temperature=0.2, 
+                       iou_threshold=0.5, 
+                       reweight_func='none',
+                       lamda=1.0):
+        '''Args:
+            tempearture: a constant to be divided by consine similarity to enlarge the magnitude
+            iou_threshold: consider proposals with higher credibility to increase consistency.
+        '''
+        super().__init__()
+        self.temperature = temperature
+        self.iou_threshold = iou_threshold
+        self.reweight_func = reweight_func
+        self.lamda = lamda
+        self.base_temperature = 0.07
+
+        self.num_classes = 20
+        self.num_novel = 5
+
+    def forward(self, features, labels, ious):
+        """
+        Args:
+            features (tensor): shape of [M, K] where M is the number of features to be compared,
+                and K is the feature_dim.   e.g., [8192, 128]
+            labels (tensor): shape of [M].  e.g., [8192]
+        """
+        assert features.shape[0] == labels.shape[0] == ious.shape[0]
+
+        # Mine for the novel class features
+        keep_novel = labels >= (self.num_classes - self.num_novel)
+        feat_novel = features[keep_novel]
+        
+        if len(labels.shape) == 1:
+            labels = labels.reshape(-1, 1)
+
+        similarity = torch.div(
+            torch.matmul(feat_novel, features.T), self.temperature)
+        # for numerical stability
+        sim_row_max, _ = torch.max(similarity, dim=1, keepdim=True)
+        similarity = similarity - sim_row_max.detach()
+        
+        log_prob = 2 * self.lamda * similarity.sum(1, keepdim=True)
+
+        per_label_log_prob = log_prob
+        keep = ious >= self.iou_threshold
+        per_label_log_prob = per_label_log_prob[keep]
+        loss = -per_label_log_prob
+
+        coef = self._get_reweight_func(self.reweight_func)(ious)
+        coef = coef[keep]
+
+        loss = loss * coef
+        
+        return loss.mean()
+
+    @staticmethod
+    def _get_reweight_func(option):
+        def trivial(iou):
+            return torch.ones_like(iou)
+        def exp_decay(iou):
+            return torch.exp(iou) - 1
+        def linear(iou):
+            return iou
+
+        if option == 'none':
+            return trivial
+        elif option == 'linear':
+            return linear
+        elif option == 'exp':
+            return exp_decay
+
+class JointObjective(nn.Module):
+    
+    def __init__(self, sim_func = "FL", smi_func = "FLMI",
+                       temperature=0.2, 
+                       iou_threshold=0.5, 
+                       reweight_func='none',
+                       lamda=1.0):
+        '''Args:
+            tempearture: a constant to be divided by consine similarity to enlarge the magnitude
+            iou_threshold: consider proposals with higher credibility to increase consistency.
+        '''
+        super().__init__()
+        self.temperature = temperature
+        self.iou_threshold = iou_threshold
+        self.reweight_func = reweight_func
+        self.lamda = lamda
+        self.base_temperature = 0.07
+
+        self.num_classes = 20
+        self.num_novel = 5
+        
+        # Chose the SIM function
+        if self.sim_func == "GC":
+            self.sim = GraphCut(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.sim_func == "FL":
+            self.sim = FacilityLocation(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.sim_func == "LogDet":
+            self.sim = LogDet(self.temperature, self.contrast_iou_thres, self.reweight_func)
+
+        # Chose the SMI function
+        if self.smi_func == "FLMI":
+            self.smi_func = FLMI(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.smi_func == "GCMI":
+            self.smi_func = GCMI(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        
+        self.eta = 0.5
+        
+    def forward(self, features, labels, ious):
+        """
+        Args:
+            features (tensor): shape of [M, K] where M is the number of features to be compared,
+                and K is the feature_dim.   e.g., [8192, 128]
+            labels (tensor): shape of [M].  e.g., [8192]
+        """
+        assert features.shape[0] == labels.shape[0] == ious.shape[0]
+
+        if len(labels.shape) == 1:
+            labels = labels.reshape(-1, 1)
+
+        loss = (1 - self.eta) * self.smi_func(features, labels, ious) + \
+                self.eta * self.sim_func(features, labels, ious)
 
         return loss.mean()
 

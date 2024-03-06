@@ -35,6 +35,9 @@ from ..contrastive_loss import (
     GraphCut,
     FacilityLocation,
     LogDet,
+    FLMI,
+    GCMI,
+    JointObjective,
     SupConLossV2,
     ContrastiveHead,
     SupConLossWithPrototype,
@@ -1016,6 +1019,11 @@ class ContrastiveROIHeads(StandardROIHeads):
         self.decay_rate           = cfg.MODEL.ROI_BOX_HEAD.CONTRASTIVE_BRANCH.DECAY.RATE
 
         self.num_classes          = cfg.MODEL.ROI_HEADS.NUM_CLASSES
+        self.num_novel = 0
+        if 'voc' in cfg.DATASETS.TRAIN[0]:
+            self.num_novel = 5
+        elif 'coco' in cfg.DATASETS.TRAIN[0]:
+            self.num_novel = 20
 
         self.loss_version         = cfg.MODEL.ROI_BOX_HEAD.CONTRASTIVE_BRANCH.LOSS_VERSION
         self.contrast_iou_thres   = cfg.MODEL.ROI_BOX_HEAD.CONTRASTIVE_BRANCH.IOU_THRESHOLD
@@ -1035,7 +1043,17 @@ class ContrastiveROIHeads(StandardROIHeads):
             self.criterion = FacilityLocation(self.temperature, self.contrast_iou_thres, self.reweight_func)
         elif self.loss_version == "LogDet":
             self.criterion = LogDet(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.loss_version == "FLMI":
+            self.criterion = FLMI(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.loss_version == "GCMI":
+            self.criterion = GCMI(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.loss_version == "FL+FLMI":
+            self.criterion = JointObjective("FL", "FLMI", self.temperature, self.contrast_iou_thres, self.reweight_func)
+        elif self.loss_version == "GC+GCMI":
+            self.criterion = JointObjective("GC", "GCMI", self.temperature, self.contrast_iou_thres, self.reweight_func)
+        
         self.criterion.num_classes = self.num_classes  # to be used in protype version
+        self.criterion.num_novel = self.num_novel
 
     def _forward_box(self, features, proposals):
         box_features = self.box_pooler(features, [x.proposal_boxes for x in proposals])
