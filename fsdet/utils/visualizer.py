@@ -187,14 +187,21 @@ class Visualizer:
         classes = predictions.pred_classes if predictions.has("pred_classes") else None
         labels = _create_text_labels(classes, scores, self.metadata.get("thing_classes", None))
 
+        # Define neon green color
+        # neon_green = (57/255, 255/255, 20/255)
+        neon_green = (0.0, 1.0, 0.0)
+
         if self._instance_mode == ColorMode.SEGMENTATION and self.metadata.get("thing_colors"):
             colors = [
                 self._jitter([x / 255 for x in self.metadata.thing_colors[c]]) for c in classes
             ]
-            alpha = 0.8
+            alpha = 1.0
         else:
             colors = None
-            alpha = 0.5
+            alpha = 0.5 * 2
+
+        colors = [neon_green for _ in classes]
+        alpha = 1.0
 
         self.overlay_instances(
             boxes=boxes,
@@ -305,7 +312,7 @@ class Visualizer:
                         text_pos = (x0, y1)
 
                 height_ratio = (y1 - y0) / np.sqrt(self.output.height * self.output.width)
-                lighter_color = self._change_color_brightness(color, brightness_factor=0.7)
+                lighter_color = self._change_color_brightness(color, brightness_factor=1.0)
                 font_size = (
                     np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2)
                     * 0.5
@@ -314,7 +321,7 @@ class Visualizer:
                 self.draw_text(
                     labels[i],
                     text_pos,
-                    color=lighter_color,
+                    color=color,
                     horizontal_alignment=horiz_align,
                     font_size=font_size,
                 )
@@ -355,7 +362,7 @@ class Visualizer:
 
         for i in range(num_instances):
             self.draw_rotated_box_with_label(
-                boxes[i], edge_color=colors[i], label=labels[i] if labels is not None else None
+                boxes[i], alpha=1.0, edge_color=colors[i], label=labels[i] if labels is not None else None
             )
 
         return self.output
@@ -411,7 +418,7 @@ class Visualizer:
         )
         return self.output
 
-    def draw_box(self, box_coord, alpha=0.5, edge_color="g", line_style="-"):
+    def draw_box(self, box_coord, alpha=1.0, edge_color="g", line_style="-"):
         """
         Args:
             box_coord (tuple): a tuple containing x0, y0, x1, y1 coordinates, where x0 and y0
@@ -429,7 +436,7 @@ class Visualizer:
         width = x1 - x0
         height = y1 - y0
 
-        linewidth = max(self._default_font_size / 4, 1)
+        linewidth = max(self._default_font_size / 2, 1)
 
         self.output.ax.add_patch(
             mpl.patches.Rectangle(
@@ -446,7 +453,7 @@ class Visualizer:
         return self.output
 
     def draw_rotated_box_with_label(
-        self, rotated_box, alpha=0.5, edge_color="g", line_style="-", label=None
+        self, rotated_box, alpha=1.0, edge_color="g", line_style="-", label=None
     ):
         """
         Args:
@@ -490,7 +497,8 @@ class Visualizer:
             text_pos = rotated_rect[1]  # topleft corner
 
             height_ratio = h / np.sqrt(self.output.height * self.output.width)
-            label_color = self._change_color_brightness(edge_color, brightness_factor=0.7)
+            # label_color = self._change_color_brightness(edge_color, brightness_factor=1.0)
+            label_color = edge_color
             font_size = (
                 np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2) * 0.5 * self._default_font_size
             )

@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from fsdet.layers import ShapeSpec
 from fsdet.structures import Boxes, Instances, pairwise_iou
-from fsdet.utils.events import get_event_storage
+from fsdet.utils.events import get_event_storage, EventStorage
 from fsdet.utils.registry import Registry
 import fvcore.nn.weight_init as weight_init
 
@@ -1058,12 +1058,16 @@ class ContrastiveROIHeads(StandardROIHeads):
     def _forward_box(self, features, proposals):
         box_features = self.box_pooler(features, [x.proposal_boxes for x in proposals])
         box_features = self.box_head(box_features)  # [None, FC_DIM]
-        pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
+        if self.is_finetuning:
+            pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features, proposals)
+        else:
+            pred_class_logits, pred_proposal_deltas = self.box_predictor(box_features)
         box_features_contrast = self.encoder(box_features)
         del box_features
 
         if self.weight_decay:
-            storage = get_event_storage()
+            with EventStorage():
+                storage = get_event_storage()
             if int(storage.iter) in self.decay_steps:
                 self.contrast_loss_weight *= self.decay_rate
 

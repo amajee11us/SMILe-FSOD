@@ -39,6 +39,7 @@ class ConfusionMatrix:
         self.IOU_THRESHOLD = IOU_THRESHOLD
 
         self.count = 0
+        self.save_dir = "checkpoints/voc/conf_matrices"
 
     def process_batch(self, detections, labels: np.ndarray):
         """
@@ -100,11 +101,20 @@ class ConfusionMatrix:
         for i in range(self.num_classes + 1):
             print(' '.join(map(str, self.matrix[i])))
     
+    def create_directory_if_not_exists(self):
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
+            print(f"Directory created: {self.save_dir}")
+        else:
+            print(f"Directory already exists: {self.save_dir}")
+
     def get_save_path(self):
-        return "checkpoints/voc/conf_matrices/conf_matrix_{}_{}.npy".format(self.data_name, self.count)
+        return "{}/conf_matrix_{}_{}.npy".format(self.save_dir, self.data_name, self.count)
 
     def save_conf_matrix(self):
-        if not os.path.exists(self.get_save_path()):
+        if not os.path.exists(self.save_dir):
+            self.create_directory_if_not_exists()
+
             while os.path.exists(self.get_save_path()):
                 self.count += 1
 

@@ -519,19 +519,23 @@ class FLMI(nn.Module):
 
         # Mine for the novel class features
         keep_novel = labels >= (self.num_classes - self.num_novel)
-        feat_novel = features[keep_novel]
+        feat_novel = features[keep_novel.squeeze(-1)]
         
         if len(labels.shape) == 1:
             labels = labels.reshape(-1, 1)
 
         similarity = torch.div(
-            torch.matmul(feat_novel, features.T), self.temperature)
+            torch.matmul(features, feat_novel.T), self.temperature)
         # for numerical stability
         sim_row_max, _ = torch.max(similarity, dim=1, keepdim=True)
         similarity = similarity - sim_row_max.detach()
         
-        loss = soft_max(similarity, axis=0).sum(0) + \
-               self.lamda * soft_max(similarity, axis=1).sum(1)
+        # Calculate the FLMI loss
+        loss = soft_max(similarity, axis=0).sum() + \
+               self.lamda * soft_max(similarity, axis=1).sum()
+
+        # Normalize the loss        
+        loss = (1 / features.shape[0]) * loss
 
         return loss.mean()
 
@@ -645,18 +649,18 @@ class JointObjective(nn.Module):
         self.num_novel = 5
         
         # Chose the SIM function
-        if self.sim_func == "GC":
-            self.sim = GraphCut(self.temperature, self.contrast_iou_thres, self.reweight_func)
-        elif self.sim_func == "FL":
-            self.sim = FacilityLocation(self.temperature, self.contrast_iou_thres, self.reweight_func)
-        elif self.sim_func == "LogDet":
-            self.sim = LogDet(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        if sim_func == "GC":
+            self.sim_func = GraphCut(self.temperature, self.iou_threshold, self.reweight_func)
+        elif sim_func == "FL":
+            self.sim_func = FacilityLocation(self.temperature, self.iou_threshold, self.reweight_func)
+        elif sim_func == "LogDet":
+            self.sim_func = LogDet(self.temperature, self.iou_threshold, self.reweight_func)
 
         # Chose the SMI function
-        if self.smi_func == "FLMI":
-            self.smi_func = FLMI(self.temperature, self.contrast_iou_thres, self.reweight_func)
-        elif self.smi_func == "GCMI":
-            self.smi_func = GCMI(self.temperature, self.contrast_iou_thres, self.reweight_func)
+        if smi_func == "FLMI":
+            self.smi_func = FLMI(self.temperature, self.iou_threshold, self.reweight_func)
+        elif smi_func == "GCMI":
+            self.smi_func = GCMI(self.temperature, self.iou_threshold, self.reweight_func)
         
         self.eta = 0.5
         
