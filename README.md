@@ -89,7 +89,7 @@ Where `WEIGHTS_PATH` points to the `model_surgery.pth` generated from the previo
 To evaluate the trained models, run
 
 ```angular2html
-python tools/test_net.py --num-gpus 8 \
+python tools/test_net.py --num-gpus 4 \
         --config-file configs/PASCAL_VOC/split1/split1_10shot_FSCE_FLQMI_IoU_0.7_weight_0.5.yaml \
         --eval-only
 ```
@@ -108,6 +108,28 @@ You can use `tools/run_experiments.py` to do the training and evaluation. For ex
 python tools/run_experiments.py --num-gpus 4 \
         --shots 1 5 10 --seeds 0 10 --split 1
 ```
+
+### Inference with Visualizations
+
+1. Pick a model (which you have already trained) and its config file, for example, `configs/PASCAL_VOC/split1/split1_10shot_AGCM_FLQMI_IoU_0.7_weight_0.5.yaml`.
+2. We provide `demo.py` that is able to run builtin standard models. Run it with:
+```
+python demo/demo.py --config-file configs/PASCAL_VOC/split1/split1_10shot_AGCM_FLQMI_IoU_0.7_weight_0.5.yaml \
+  --input input1.jpg input2.jpg \
+  [--other-options]
+  --opts MODEL.WEIGHTS fsdet://coco/tfa_cos_1shot/model_final.pth
+```
+The configs are made for training, therefore we need to specify `MODEL.WEIGHTS` to a model from model zoo for evaluation.
+This command will run the inference and show visualizations in an OpenCV window.
+
+For details of the command line arguments, see `demo.py -h` or look at its source code
+to understand its behavior. Some common arguments are:
+* To run __on your webcam__, replace `--input files` with `--webcam`.
+* To run __on a video__, replace `--input files` with `--video-input video.mp4`.
+* To run __on cpu__, add `MODEL.DEVICE cpu` after `--opts`.
+* To run on a list/set of images passed to the script, add `--input-file` with a '.txt' file containing a list of image IDs.
+* To run on a list/set of images passed to the script, you also have to pass the `--base=dir` which locates the default path to the images.
+* To save outputs to a directory (for images) or a file (for webcam or video), use `--output`.
 
 ### Acknowledgement
 We thank the authors of the below mentioned contributions. 

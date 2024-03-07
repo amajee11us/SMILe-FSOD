@@ -1,6 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import argparse
-import glob
 import multiprocessing as mp
 import os
 import time
@@ -16,7 +14,6 @@ from predictor import VisualizationDemo
 # constants
 WINDOW_NAME = "COCO detections"
 
-
 def setup_cfg(args):
     # load config from file and command-line arguments
     cfg = get_cfg()
@@ -27,7 +24,6 @@ def setup_cfg(args):
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.confidence_threshold
     cfg.freeze()
     return cfg
-
 
 def get_parser():
     parser = argparse.ArgumentParser(description="FsDet demo for builtin models")
@@ -40,15 +36,16 @@ def get_parser():
     parser.add_argument("--webcam", action="store_true", help="Take inputs from webcam.")
     parser.add_argument("--video-input", help="Path to video file.")
     parser.add_argument(
-        "--input",
-        nargs="+",
-        help="A list of space separated input images; "
-        "or a single glob pattern such as 'directory/*.jpg'",
+        "--input-file",
+        help="Path to a file containing a list of image IDs from PASCAL VOC dataset;",
     )
     parser.add_argument(
-        "--output",
-        help="A file or directory to save output visualizations. "
-        "If not given, will show output in an OpenCV window.",
+        "--base-dir",
+        help="Base directory where the images are located.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="A directory to save output visualizations.",
     )
 
     parser.add_argument(
@@ -65,7 +62,6 @@ def get_parser():
     )
     return parser
 
-
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
     args = get_parser().parse_args()
@@ -77,11 +73,14 @@ if __name__ == "__main__":
 
     demo = VisualizationDemo(cfg)
 
-    if args.input:
-        if len(args.input) == 1:
-            args.input = glob.glob(os.path.expanduser(args.input[0]))
-            assert args.input, "The input path(s) was not found"
-        for path in tqdm.tqdm(args.input, disable=not args.output):
+    if args.input_file and args.base_dir:
+        # Read the input file and get image IDs
+        with open(args.input_file, 'r') as file:
+            image_ids = [line.strip() for line in file.readlines()]
+
+        input_paths = [os.path.join(args.base_dir, img_id) for img_id in image_ids]
+
+        for img_id, path in tqdm.tqdm(zip(image_ids, input_paths), disable=not args.output_dir, total=len(image_ids)):
             # use PIL, to be consistent with evaluation
             img = read_image(path, format="BGR")
             start_time = time.time()
@@ -96,13 +95,9 @@ if __name__ == "__main__":
                 )
             )
 
-            if args.output:
-                if os.path.isdir(args.output):
-                    assert os.path.isdir(args.output), args.output
-                    out_filename = os.path.join(args.output, os.path.basename(path))
-                else:
-                    assert len(args.input) == 1, "Please specify a directory with args.output"
-                    out_filename = args.output
+            if args.output_dir:
+                assert os.path.isdir(args.output_dir), f"Output directory {args.output_dir} does not exist"
+                out_filename = os.path.join(args.output_dir, img_id)
                 visualized_output.save(out_filename)
             else:
                 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
@@ -110,7 +105,7 @@ if __name__ == "__main__":
                 if cv2.waitKey(0) == 27:
                     break  # esc to quit
     elif args.webcam:
-        assert args.input is None, "Cannot have both --input and --webcam!"
+        assert args.input_file is None, "Cannot have both --input-file and --webcam!"
         cam = cv2.VideoCapture(0)
         for vis in tqdm.tqdm(demo.run_on_video(cam)):
             cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
@@ -126,12 +121,10 @@ if __name__ == "__main__":
         num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
         basename = os.path.basename(args.video_input)
 
-        if args.output:
-            if os.path.isdir(args.output):
-                output_fname = os.path.join(args.output, basename)
-                output_fname = os.path.splitext(output_fname)[0] + ".mkv"
-            else:
-                output_fname = args.output
+        if args.output_dir:
+            assert os.path.isdir(args.output_dir), f"Output directory {args.output_dir} does not exist"
+            output_fname = os.path.join(args.output_dir, basename)
+            output_fname = os.path.splitext(output_fname)[0] + ".mkv"
             assert not os.path.isfile(output_fname), output_fname
             output_file = cv2.VideoWriter(
                 filename=output_fname,
@@ -144,7 +137,7 @@ if __name__ == "__main__":
             )
         assert os.path.isfile(args.video_input)
         for vis_frame in tqdm.tqdm(demo.run_on_video(video), total=num_frames):
-            if args.output:
+            if args.output_dir:
                 output_file.write(vis_frame)
             else:
                 cv2.namedWindow(basename, cv2.WINDOW_NORMAL)
@@ -152,7 +145,7 @@ if __name__ == "__main__":
                 if cv2.waitKey(1) == 27:
                     break  # esc to quit
         video.release()
-        if args.output:
+        if args.output_dir:
             output_file.release()
         else:
             cv2.destroyAllWindows()
