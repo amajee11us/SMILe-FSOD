@@ -1,4 +1,4 @@
-_BASE_: "../../Base-RCNN-FPN.yaml"
+_BASE_: "../../../Base-RCNN-FPN.yaml"
 
 MODEL:
   WEIGHTS: "checkpoints/voc/faster_rcnn/faster_rcnn_R_101_FPN_base1/model_reset_surgery.pth"
