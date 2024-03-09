@@ -2,7 +2,7 @@
 
 This repo contains the implementation of proposed SMILe framework which introduces a combinatorial viewpoint in Few-Shot Object Detection. SMILe is built upon the codebase [FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags).
 
-![SMILe Figure](demo/images/overview_smile.png)
+![SMILe Figure](figs/overview_smile.png)
 
 Confusion and forgetting of object classes have been challenges of prime interest in Few-Shot Object Detection (FSOD).
 To overcome these pitfalls in metric learning based FSOD techniques, we introduce a novel Submodular Mutual Information Learning (**SMILe**) framework which adopts combinatorial mutual information functions to enforce the creation of tighter and discriminative feature clusters in FSOD.
