@@ -1,6 +1,6 @@
 # SMILe: Leveraging Submodular Mutual Information For Robust Few-Shot Object Detection
 
-This repo contains the implementation of proposed SMILe framework which introduces a combinatorial viewpoint in Few-Shot Object Detection. SMILe is built upon the codebase [FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags).
+This repo contains the implementation of proposed SMILe framework which introduces a combinatorial viewpoint in Few-Shot Object Detection. SMILe is built upon the codebase of [PDC](https://github.com/Bohao-Lee/PDC). Note that PDC is based on the mmdetection repostory providing diverse models to work with.
 
 ![SMILe Figure](figs/overview_smile.png)
 
@@ -13,27 +13,33 @@ Experiments on popular FSOD benchmarks, PASCAL-VOC and MS-COCO show that our app
 Our experiments also demonstrate better retention of base class performance and up to $2\times$ faster convergence over existing approaches agnostic of the underlying architecture.
 
 ## Installation
-The installation instructions are similar to FsDet and FSCE.
-FsDet is built on [Detectron2](https://github.com/facebookresearch/detectron2). But you don't need to build detectron2 seperately as this codebase is self-contained. You can follow the instructions below to install the dependencies and build `FsDet`. FSCE functionalities are implemented as `class`and `.py` scripts in FsDet which therefore requires no extra build efforts. 
-
-**Dependencies**
+The installation instructions are similar to PDC but with specific modifications as described below.
 
 * Linux with Python >= 3.6
-* [PyTorch](https://pytorch.org/get-started/locally/) >= 1.3 
-* [torchvision](https://github.com/pytorch/vision/) that matches the PyTorch installation
-* Dependencies: ```pip install -r requirements.txt```
-* pycocotools: ```pip install cython; pip install 'git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI'```
-* [fvcore](https://github.com/facebookresearch/fvcore/): ```pip install 'git+https://github.com/facebookresearch/fvcore'``` 
-* [OpenCV](https://pypi.org/project/opencv-python/), optional, needed by demo and visualization ```pip install opencv-python```
-* GCC >= 4.9
-
-**Build**
-
-```bash
-python setup.py build develop  # you might need sudo
 ```
-Note: you may need to rebuild FsDet after reinstalling a different build of PyTorch.
-
+conda create --name pdc python=3.9.13
+```
+[PyTorch](https://pytorch.org/get-started/locally/) : 
+```conda install pytorch==1.10.0 torchvision==0.11.0 torchaudio==0.10.0 cudatoolkit=11.3 -c pytorch -c conda-forge```
+* Install mmcv from mmlabs
+```
+pip install -U openmim
+mim install mmengine
+mim install "mmcv-full>=1.2.4, <1.4.0"
+```
+* Install Cython```pip install cython==0.29.33```
+* [fvcore](https://github.com/facebookresearch/fvcore/): ```pip install timm fvcore yapf==0.40.1```
+* Install Apex library
+```
+git clone https://github.com/NVIDIA/apex
+cd apex
+pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+```
+* Install and Build the PDC repository
+```
+pip install -v -e .
+```
+* [OpenCV](https://pypi.org/project/opencv-python/), optional, needed by demo and visualization ```pip install opencv-python```
 
 
 ## Data preparation
