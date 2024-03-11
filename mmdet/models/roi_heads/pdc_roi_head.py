@@ -4,13 +4,14 @@ import torch.nn.functional as F
 from optparse import Values
 import torch
 import numpy as np
+import os
 
 from mmdet.core import bbox2result, bbox2roi, build_assigner, build_sampler
 from ..builder import HEADS, build_head, build_roi_extractor
 from .standard_roi_head import StandardRoIHead
 from .base_roi_head import BaseRoIHead
 from .test_mixins import BBoxTestMixin, MaskTestMixin
-from mmdet.models.losses.contrastive_loss import SupConLoss
+from mmdet.models.losses.contrastive_loss import SupConLoss, FacilityLocation, FLVMI, FLQMI
 import fvcore.nn.weight_init as weight_init
 
 class ContrastiveHead(nn.Module):
@@ -86,9 +87,18 @@ class PDCRoIHead(StandardRoIHead):
         self.noising_num = 50 #50 20 10 
         self.noising_scalar = 0.1 # noising of gt 
         self.noising_loss_scalar = 0.1
-        self.contrastive_loss_fun = SupConLoss(temperature=0.2)
-
-        self.contrastive_scalar = 0.1
+        if os.environ["ROI_LOSS_TYPE"] == "FL":
+            self.contrastive_loss_fun = FacilityLocation(temperature=0.7)
+        elif os.environ["ROI_LOSS_TYPE"] == "FLVMI":
+            self.contrastive_loss_fun = FLVMI(temperature=0.7)
+        elif os.environ["ROI_LOSS_TYPE"] == "FLQMI":
+            self.contrastive_loss_fun = FLQMI(temperature=0.7)
+        elif os.environ["ROI_LOSS_TYPE"] == "GCMI":
+            self.contrastive_loss_fun = GCMI(temperature=0.7)
+        else:
+            self.contrastive_loss_fun = SupConLoss(temperature=0.2)    
+        
+        self.contrastive_scalar = 0.1 #0.01 #0.1
         # for vit-b
         self.contrastive_head = ContrastiveHead(dim_in=512, feat_dim=256)
 
