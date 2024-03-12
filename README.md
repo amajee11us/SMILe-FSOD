@@ -58,94 +58,42 @@ The default seed that is used to report performace in research papers can be fou
 
 ### Training
 
-We follow the eaact training procedure of FsDet and we use **random initialization** for novel weights. For a full description of training procedure, see [here](https://github.com/ucbdrive/few-shot-object-detection/blob/master/docs/TRAIN_INST.md).
+We follow the eaact training procedure of imTED and follow the two-stage training strategy as discussed below:
 
 #### 1. Stage 1: Training base detector.
 
 ```
-python tools/train_net.py --num-gpus 4 \
-        --config-file configs/PASCAL_VOC/base-training/R101_FPN_base_training_split1.yml
+CUDA_VISIBLE_DEVICES=0 bash tools/dist_train.sh \
+        configs/imted/few_shot/voc/imted_faster_rcnn_vit_base_2x_base_training_voc_split1.py 1
 ```
 
-#### 2. Random initialize  weights for novel classes.
-
+#### 2. Stage 2: Few-Shot Adaptation on novel data.
+Finetuning for the imTED + SMILe model - 
 ```
-python tools/ckpt_surgery.py \
-        --src1 checkpoints/voc/faster_rcnn/faster_rcnn_R_101_FPN_base1/model_final.pth \
-        --method randinit \
-        --save-dir checkpoints/voc/faster_rcnn/faster_rcnn_R_101_FPN_all1
+CUDA_VISIBLE_DEVICES=0 bash tools/dist_train.sh \
+        configs/imted/few_shot/voc/split1/imted_faster_rcnn_vit_base_2x_finetuning_10shot_voc_split1.py 1 FLQMI
 ```
-
-This step will create a `model_surgery.pth` from` model_final.pth`. 
-
-Don't forget the `--coco` and `--lvis`options when work on the COCO and LVIS datasets, see `ckpt_surgery.py` for all arguments details.
-
-#### 3. Stage 2: Few-Shot Adaptation on novel data.
-
+Finetuning for the PDC + SMILe model -
 ```
-python tools/train_net.py --num-gpus 4 \
-        --config-file configs/PASCAL_VOC/split1/split1_10shot_FSCE_FLQMI_IoU_0.7_weight_0.5.yaml \
-        --opts MODEL.WEIGHTS WEIGHTS_PATH
+CUDA_VISIBLE_DEVICES=0 bash tools/dist_train.sh \
+        configs/imted/few_shot_pdc/voc/split1/imted_ss_faster_rcnn_vit_base_2x_finetuning_10shot_voc_split1.py 1 FLQMI
 ```
-
-Where `WEIGHTS_PATH` points to the `model_surgery.pth` generated from the previous step. Or you can specify it in the configuration yml. 
 
 #### Evaluation
 
 To evaluate the trained models, run
 
 ```angular2html
-python tools/test_net.py --num-gpus 4 \
-        --config-file configs/PASCAL_VOC/split1/split1_10shot_FSCE_FLQMI_IoU_0.7_weight_0.5.yaml \
-        --eval-only
+CUDA_VISIBLE_DEVICES=0 bash tools/dist_test.sh \
+        configs/imted/few_shot_pdc/voc/split1/imted_ss_faster_rcnn_vit_base_2x_finetuning_10shot_voc_split1.py \
+        work_dir/imted_ss_faster_rcnn_vit_base_2x_finetuning_10shot_voc_split1/epoch_30.pth \
+        1 --eval bbox
 ```
-
-Or you can specify `TEST.EVAL_PERIOD` in the configuation yml to evaluate during training. 
-
-
-
-### Multiple Runs
-
-For ease of training and evaluation over multiple runs, fsdet provided several helpful scripts in `tools/`.
-
-You can use `tools/run_experiments.py` to do the training and evaluation. For example, to experiment on 30 seeds of the first split of PascalVOC on all shots, run
-
-```angular2html
-python tools/run_experiments.py --num-gpus 4 \
-        --shots 1 5 10 --seeds 0 10 --split 1
-```
-
-### Inference with Visualizations
-
-1. Pick a model (which you have already trained) and its config file, for example, `configs/PASCAL_VOC/split1/split1_10shot_AGCM_FLQMI_IoU_0.7_weight_0.5.yaml`.
-2. We provide `demo.py` that is able to run builtin standard models. Run it with:
-```
-python demo/demo.py --config-file configs/PASCAL_VOC/split1/split1_10shot_AGCM_FLQMI_IoU_0.7_weight_0.5.yaml \
-  --input input1.jpg input2.jpg \
-  [--other-options]
-  --opts MODEL.WEIGHTS fsdet://coco/tfa_cos_1shot/model_final.pth
-```
-The configs are made for training, therefore we need to specify `MODEL.WEIGHTS` to a model from model zoo for evaluation.
-This command will run the inference and show visualizations in an OpenCV window.
-
-For details of the command line arguments, see `demo.py -h` or look at its source code
-to understand its behavior. Some common arguments are:
-* To run __on your webcam__, replace `--input files` with `--webcam`.
-* To run __on a video__, replace `--input files` with `--video-input video.mp4`.
-* To run __on cpu__, add `MODEL.DEVICE cpu` after `--opts`.
-* To run on a list/set of images passed to the script, add `--input-file` with a '.txt' file containing a list of image IDs.
-* To run on a list/set of images passed to the script, you also have to pass the `--base=dir` which locates the default path to the images.
-* To save outputs to a directory (for images) or a file (for webcam or video), use `--output`.
 
 ### Acknowledgement
 We thank the authors of the below mentioned contributions. 
-Most of our code is adapted from the FSCE approach (CVPR 2021).
+Most of our code is adapted from the imTED approach.
 
-Frustratingly Simple Few-Shot Object Detection ([FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags))
+Integrally Migrating Pre-trained Transformer Encoder-decoders for Visual Object Detection ([imTED](https://github.com/LiewFeng/imTED))
 
-Few-Shot Object Detection via Contrastive Proposal Encoding ([FSCE](https://github.com/megvii-research/FSCE))
-
-Attention Guided Cosine Margin For Overcoming Class-Imbalance in Few-Shot Road Object Detection ([AGCM](https://arxiv.org/abs/2111.06639))
-
-
-
+Proposal Distribution Calibration for Few-Shot Object Detection ([PDC](https://github.com/Bohao-Lee/PDC))
