@@ -16,6 +16,7 @@ build/
 dist/
 wheels/
 fsdet/model_zoo/
+datasets/*split
 
 # pytorch/python/numpy formats
 *.pth

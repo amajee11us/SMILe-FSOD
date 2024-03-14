@@ -546,12 +546,12 @@ class FastRCNNContrastiveDistillOutputs(FastRCNNOutputs):
         pred_proposal_deltas,
         proposals,
         smooth_l1_beta,
-        margins = None,
         box_cls_feat_con, 
         criterion,
         contrast_loss_weight,
         box_reg_weight,
         cl_head_only,
+        margins = None,
     ):
         super(FastRCNNContrastiveDistillOutputs, self).__init__(
             cfg, box2box_transform,

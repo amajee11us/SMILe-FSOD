@@ -1,0 +1,21 @@
+_BASE_: "faster_rcnn_R_101_FPN_ETF_pre_30shot.yaml"
+MODEL:
+  BACKBONE:
+    FREEZE: True
+  PROPOSAL_GENERATOR:
+    FREEZE: False
+  ROI_HEADS:
+    NAME: "ContrastiveDistillROIHeads"
+  ROI_BOX_HEAD:
+    CONTRASTIVE_BRANCH:
+      LOSS_VERSION: "FL+FLVMI"
+      TEMPERATURE: 0.2
+      LOSS_WEIGHT: 0.5
+      DECAY:
+        ENABLED: True
+        STEPS: [10000, 16000]
+        RATE: 0.5
+      IOU_THRESHOLD: 0.7  # high credibility proposals provide consistency
+LOSS:
+  ADJUST_STAGE: 'distill'
+OUTPUT_DIR: "checkpoints/coco/distill/t1"

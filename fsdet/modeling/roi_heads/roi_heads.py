@@ -16,12 +16,12 @@ from detectron2.modeling.proposal_generator.proposal_utils import (
 )
 from detectron2.modeling.sampling import subsample_labels
 from detectron2.structures import Boxes, Instances, pairwise_iou
-from detectron2.utils.events import get_event_storage
+from detectron2.utils.events import get_event_storage, EventStorage
 from detectron2.utils.registry import Registry
 from torch import nn
 
 from .box_head import build_box_head
-from .fast_rcnn import ROI_HEADS_OUTPUT_REGISTRY, FastRCNNOutputs, FastRCNNDistillOutputs
+from .fast_rcnn import ROI_HEADS_OUTPUT_REGISTRY, FastRCNNOutputs, FastRCNNDistillOutputs, FastRCNNContrastiveDistillOutputs
 import pdb
 
 from ..contrastive_loss import (
@@ -29,7 +29,8 @@ from ..contrastive_loss import (
     GraphCut,
     FacilityLocation,
     LogDet,
-    FLVMI, FLQMI,
+    FLVMI, 
+    FLQMI,
     GCMI,
     JointContrastiveLoss,
     ContrastiveHead
@@ -693,12 +694,12 @@ class ContrastiveDistillROIHeads(StandardROIHeads):
             pred_proposal_deltas,
             proposals,
             self.smooth_l1_beta,
-            (1.0,self.margins,self.trans_func),
             box_features_contrast,
             self.criterion,
             self.contrast_loss_weight,
             self.box_reg_weight,
             self.cl_head_only,
+            (1.0,self.margins,self.trans_func),
         )
         if self.training:
             return outputs.losses()

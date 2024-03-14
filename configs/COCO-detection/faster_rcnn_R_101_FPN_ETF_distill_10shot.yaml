@@ -4,9 +4,6 @@ MODEL:
     FREEZE: True
   PROPOSAL_GENERATOR:
     FREEZE: True
-  ROI_HEADS:
-    NAME: "DistillMarginROIHeads"
-    # FREEZE_FEAT: False
 LOSS:
   ADJUST_STAGE: 'distill'
 OUTPUT_DIR: "checkpoints/coco/distill/t1"
