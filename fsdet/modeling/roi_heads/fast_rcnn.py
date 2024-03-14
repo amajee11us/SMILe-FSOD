@@ -532,6 +532,142 @@ class FastRCNNDistillOutputs(FastRCNNOutputs):
             "loss_box_reg": self.smooth_l1_loss(),
         }
 
+class FastRCNNContrastiveDistillOutputs(FastRCNNOutputs):
+    """
+    A class that stores information about outputs of a Fast R-CNN head.
+    """
+
+    def __init__(
+        self,
+        cfg,
+        box2box_transform,
+        pred_class_logits,
+        teacher_class_logits,
+        pred_proposal_deltas,
+        proposals,
+        smooth_l1_beta,
+        margins = None,
+        box_cls_feat_con, 
+        criterion,
+        contrast_loss_weight,
+        box_reg_weight,
+        cl_head_only,
+    ):
+        super(FastRCNNContrastiveDistillOutputs, self).__init__(
+            cfg, box2box_transform,
+            pred_class_logits, pred_proposal_deltas,
+            proposals, smooth_l1_beta
+        )
+        self.box2box_transform = box2box_transform
+        self.pred_class_logits = pred_class_logits
+        self.pred_proposal_deltas = pred_proposal_deltas
+        self.num_preds_per_image = [len(p) for p in proposals]
+        self.smooth_l1_beta = smooth_l1_beta
+        self.box_cls_feat_con = box_cls_feat_con
+        self.criterion = criterion
+        self.contrast_loss_weight = contrast_loss_weight
+        self.box_reg_weight = box_reg_weight
+
+        self.cl_head_only = cl_head_only
+
+        self.margin_mode = cfg.LOSS.ADJUST_MODE
+        self.teacher_class_logits = teacher_class_logits
+        self.margins = margins
+
+        box_type = type(proposals[0].proposal_boxes)
+        # cat(..., dim=0) concatenates over all images in the batch
+        self.proposals = box_type.cat([p.proposal_boxes for p in proposals])  # self.proposals = List[Boxes]
+        assert not self.proposals.tensor.requires_grad, "Proposals should not require gradients!"
+        self.image_shapes = [x.image_size for x in proposals]
+
+        # The following fields should exist only when training.
+        if proposals[0].has("gt_boxes"):
+            self.gt_boxes = box_type.cat([p.gt_boxes for p in proposals])
+            assert proposals[0].has("gt_classes")
+            self.gt_classes = cat([p.gt_classes for p in proposals], dim=0)
+            self.ious = cat([p.iou for p in proposals], dim=0)
+    
+    def supervised_contrastive_loss(self):
+        contrastive_loss = self.criterion(self.box_cls_feat_con, self.gt_classes, self.ious)
+        return contrastive_loss
+
+    def init_pre_probability(self):
+        self.cls_prob = None
+        self.tau = self.cfg.LOSS.ADJUST_TAU
+        if 'voc' in self.cfg.DATASETS.TRAIN[0]:
+
+            data_comp = [item for item in self.cfg.DATASETS.TRAIN if 'allnovel' in item][0]
+            comp = data_comp.split('allnovel')[1].split('_')
+            split = int(comp[0])
+            n_shot = float(comp[1][:-4])
+            cls_count = VOC_BASE_CNT[split] + [n_shot for _ in range(5)] + [self.cfg.LOSS.ADJUST_BACK,]
+            total_count = float(sum(cls_count))
+            self.cls_prob = torch.as_tensor([float(item)/total_count for item in cls_count], dtype=torch.float)
+        
+        if 'idd' in self.cfg.DATASETS.TRAIN[0]:
+
+            data_comp = [item for item in self.cfg.DATASETS.TRAIN if 'allnovel' in item][0]
+            comp = data_comp.split('allnovel')[1].split('_')
+            split = int(comp[0])
+            n_shot = float(comp[1][:-4])
+            novel_cls_count = self.num_class - len(IDD_BASE_CNT[split])
+            cls_count = IDD_BASE_CNT[split] + [n_shot for _ in range(novel_cls_count)] + [self.cfg.LOSS.ADJUST_BACK,]
+            total_count = float(sum(cls_count))
+            self.cls_prob = torch.as_tensor([float(item)/total_count for item in cls_count], dtype=torch.float)
+        
+        elif 'coco' in self.cfg.DATASETS.TRAIN[0]:
+
+            data_comp = [item for item in self.cfg.DATASETS.TRAIN if 'allnovel' in item][0]
+            comp = data_comp.split('allnovel')[1].split('_')
+            n_shot = float(comp[1][:-4])
+            cls_count = [item if item > 0 else n_shot for item in COCO_BASE_CNT] + [self.cfg.LOSS.ADJUST_BACK,]
+            total_count = float(sum(cls_count))
+            self.cls_prob = torch.as_tensor([float(item)/total_count for item in cls_count], dtype=torch.float)
+
+    def distill_cross_entropy_loss(self):
+        self._log_accuracy()
+        raise ValueError('Not Implemented Yet')
+    
+    def distill_adjustment_loss(self):
+        self._log_accuracy()
+        assert isinstance(self.margins,tuple)
+        tau,margins,trans_func = self.margins
+        teacher_additive = torch.log(self.cls_prob.to(self.pred_class_logits.device) + 1e-12)
+        teacher_logits = self.teacher_class_logits + teacher_additive * self.tau
+        
+        prior_mar = tau * teacher_additive
+        
+        if 'add' in self.margin_mode:
+            prior_mar = prior_mar * (1 + 0.95 * torch.tanh(margins))
+        elif 'multi' in self.margin_mode:
+            prior_mar = prior_mar * (2 * torch.sigmoid(margins))
+        additive = trans_func(prior_mar)
+        logits = self.pred_class_logits + additive.view(1,-1)
+        distill_loss = F.kl_div(F.log_softmax(logits, dim=-1), F.softmax(teacher_logits, dim=1), reduction='batchmean')
+        return (F.cross_entropy(logits, self.gt_classes, reduction="mean") + distill_loss)/2.0
+
+    def losses(self):
+        """
+        Compute the default losses for box head in Fast(er) R-CNN,
+        with softmax cross entropy loss and smooth L1 loss.
+
+        Returns:
+            A dict of losses (scalar tensors) containing keys "loss_cls" and "loss_box_reg".
+        """
+        if self.cfg.LOSS.TERM.lower() == 'ce':
+            classificaton_loss  = self.distill_cross_entropy_loss()
+        elif self.cfg.LOSS.TERM.lower() == 'adjustment':
+            classificaton_loss  = self.distill_adjustment_loss()
+
+        if self.cl_head_only:
+            return {'loss_contrast': self.supervised_contrastive_loss()}
+        else:
+            return {
+                "loss_cls": classificaton_loss,
+                "loss_box_reg": self.smooth_l1_loss(),
+                'loss_contrast': self.contrast_loss_weight * self.supervised_contrastive_loss(),
+            }
+
 
 @ROI_HEADS_OUTPUT_REGISTRY.register()
 class FastRCNNOutputLayers(nn.Module):
