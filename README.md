@@ -61,3 +61,9 @@ The testing command is provided in an sh file and please run
 ```angular2html
 sh scripts/demo.sh
 ```
+
+### Acknowledgement
+We thank the authors of the below mentioned contributions. 
+Most of our code is adapted from the imTED approach.
+
+ DiGeo: Discriminative Geometry-Aware Learning for Generalized Few-Shot Object Detection ([DiGeo](https://arxiv.org/abs/2303.09674))
