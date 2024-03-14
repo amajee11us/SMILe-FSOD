@@ -1,6 +1,11 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 from .coco_evaluation import COCOEvaluator
-from .evaluator import DatasetEvaluator, DatasetEvaluators, inference_context, inference_on_dataset
+from .evaluator import (
+    DatasetEvaluator,
+    DatasetEvaluators,
+    inference_context,
+    inference_on_dataset,
+    # analyze_on_dataset,
+)
 from .lvis_evaluation import LVISEvaluator
 from .pascal_voc_evaluation import PascalVOCDetectionEvaluator
 from .idd_detection_evaluation import IDDDetectionEvaluator

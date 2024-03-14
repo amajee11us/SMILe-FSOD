@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 """
 Detection Training Script.
 
@@ -15,18 +14,15 @@ this file as an example of how to use the library.
 You may want to write your own script with your datasets and other customizations.
 """
 
-import os
+import os,pdb
 
-import fsdet.utils.comm as comm
-from fsdet.checkpoint import DetectionCheckpointer
+import detectron2.utils.comm as comm
+from detectron2.checkpoint import DetectionCheckpointer
+from detectron2.data import MetadataCatalog, build_detection_train_loader, build_detection_test_loader
+from detectron2.engine import launch
+
 from fsdet.config import get_cfg, set_global_cfg
-from fsdet.data import MetadataCatalog #, build_detection_train_loader
-from fsdet.engine import (
-    DefaultTrainer,
-    default_argument_parser,
-    default_setup,
-    launch,
-)
+from fsdet.engine import DefaultTrainer, default_argument_parser, default_setup
 from fsdet.evaluation import (
     COCOEvaluator,
     DatasetEvaluators,
@@ -35,8 +31,6 @@ from fsdet.evaluation import (
     IDDDetectionEvaluator,
     verify_results,
 )
-
-# from fsdet.data.dataset_mapper import AlbumentationMapper
 
 
 class Trainer(DefaultTrainer):
@@ -60,7 +54,9 @@ class Trainer(DefaultTrainer):
         evaluator_list = []
         evaluator_type = MetadataCatalog.get(dataset_name).evaluator_type
         if evaluator_type == "coco":
-            evaluator_list.append(COCOEvaluator(dataset_name, cfg, True, output_folder))
+            evaluator_list.append(
+                COCOEvaluator(dataset_name, cfg, True, output_folder)
+            )
         if evaluator_type == "pascal_voc":
             return PascalVOCDetectionEvaluator(dataset_name)
         if evaluator_type == "idd_detection":
@@ -77,20 +73,108 @@ class Trainer(DefaultTrainer):
             return evaluator_list[0]
         return DatasetEvaluators(evaluator_list)
 
-    # @classmethod
-    # def build_train_loader(cls, cfg):
-    #     mapper = None
-    #     # if cfg.INPUT.USE_ALBUMENTATIONS:
-    #     #     mapper = AlbumentationMapper(cfg, is_train=True)
-    #     return build_detection_train_loader(cfg, mapper=mapper)
+def setup_new_config(cfg):
+    cfg.MODEL.ETF.RESIDUAL = True
+    cfg.MODEL.ETF.BACKGROUND = 1
+    cfg.LOSS.TERM = "ce"
+    cfg.LOSS.ADJUST_TAU = 1.0
+    cfg.LOSS.ADJUST_BACK =  1000.0
+    cfg.LOSS.ADJUST_MODE = 'multiply'
+    cfg.LOSS.ADJUST_STAGE = 'fixed'
+    cfg.RESETOUT = False
+    return cfg
 
 def setup(args):
     """
-    Create configs and perform basic setups.
+    Create configs and perform basic set``ups.
     """
     cfg = get_cfg()
+    cfg  = setup_new_config(cfg)
     cfg.merge_from_file(args.config_file)
-    cfg.merge_from_list(args.opts)
+    if args.opts:
+        cfg.merge_from_list(args.opts)
+    if cfg.RESETOUT:
+        dir_comp = cfg.OUTPUT_DIR.split('/')
+        shot = cfg.DATASETS.TRAIN[0].split('_')[-1] # The first one is always the novel set
+        data = cfg.DATASETS.TRAIN[0].split('_')[0]
+        model_key = 'ETFRes' if cfg.MODEL.ETF.RESIDUAL else 'ETF'
+        if data == 'voc':
+            the_split = cfg.DATASETS.TRAIN[0].split('_')[-2][-1]
+            lr = int(1000*cfg.SOLVER.BASE_LR)
+            bk_ratio = cfg.LOSS.ADJUST_BACK/1000.0
+            rfs = cfg.DATALOADER.REPEAT_THRESHOLD * 100 if cfg.DATALOADER.SAMPLER_TRAIN == 'RepeatFactorTrainingSampler' else 0
+            if cfg.LOSS.ADJUST_STAGE == 'distill':
+                assert cfg.MODEL.BACKBONE.FREEZE 
+                print('Logging modification for finetuning')
+                loss_suffix = dir_comp[-1]
+                new_out_dir = '{}_distill{}_{}_lr{}_{}'.format(
+                    model_key, the_split, shot, lr, loss_suffix
+                )
+                new_out_dir = '/'.join(dir_comp[:3]+[new_out_dir])
+                dir_comp = cfg.OUTPUT_DIR.split('/')
+                load_path = 'checkpoints/voc/prior/ETFRes_pre{}_{}_lr20_adj{}_rfs{}_t1/model_clean_student.pth'.format(
+                    the_split, shot, cfg.LOSS.ADJUST_BACK/1000.0, 5.0 if '2' in shot else 1.0,
+                )
+            else:
+                print('Logging modification for pre-training')
+                new_out_dir = '/'.join(dir_comp[:3]+[
+                    '{}_pre{}_{}_lr{}_adj{}_rfs{}_{}'.format(model_key,the_split,shot,lr,bk_ratio,rfs,dir_comp[-1])
+                    if cfg.LOSS.TERM == 'adjustment' else
+                    '{}_pre{}_{}_lr{}_{}'.format(model_key,the_split,shot,lr,dir_comp[-1])
+                ])
+                load_path = None
+        if data == 'idd':
+            the_split = cfg.DATASETS.TRAIN[0].split('_')[-2][-1]
+            lr = int(1000*cfg.SOLVER.BASE_LR)
+            bk_ratio = cfg.LOSS.ADJUST_BACK/1000.0
+            rfs = cfg.DATALOADER.REPEAT_THRESHOLD * 100 if cfg.DATALOADER.SAMPLER_TRAIN == 'RepeatFactorTrainingSampler' else 0
+            if cfg.LOSS.ADJUST_STAGE == 'distill':
+                assert cfg.MODEL.BACKBONE.FREEZE 
+                print('Logging modification for finetuning')
+                loss_suffix = dir_comp[-1]
+                new_out_dir = '{}_distill{}_{}_lr{}_{}'.format(
+                    model_key, the_split, shot, lr, loss_suffix
+                )
+                new_out_dir = '/'.join(dir_comp[:3]+[new_out_dir])
+                dir_comp = cfg.OUTPUT_DIR.split('/')
+                load_path = 'checkpoints/idd/prior/ETFRes_pre{}_{}_lr20_adj{}_rfs{}_t1/model_clean_student.pth'.format(
+                    the_split, shot, cfg.LOSS.ADJUST_BACK/1000.0, 5.0 if '2' in shot else 1.0,
+                )
+            else:
+                print('Logging modification for pre-training')
+                new_out_dir = '/'.join(dir_comp[:3]+[
+                    '{}_pre{}_{}_lr{}_adj{}_rfs{}_{}'.format(model_key,the_split,shot,lr,bk_ratio,rfs,dir_comp[-1])
+                    if cfg.LOSS.TERM == 'adjustment' else
+                    '{}_pre{}_{}_lr{}_{}'.format(model_key,the_split,shot,lr,dir_comp[-1])
+                ])
+                load_path = None
+        elif data == 'coco':
+            lr = int(1000*cfg.SOLVER.BASE_LR)
+            bk_ratio = cfg.LOSS.ADJUST_BACK/1000.0
+            if cfg.LOSS.ADJUST_STAGE == 'distill':
+                assert cfg.MODEL.BACKBONE.FREEZE 
+                print('Logging modification for finetuning')
+                loss_suffix = dir_comp[-1]
+                new_out_dir = '{}_distill_{}_lr{}_adj{}_{}'.format(
+                    model_key, shot, lr,
+                    bk_ratio, loss_suffix
+                )
+                new_out_dir = '/'.join(dir_comp[:3]+[new_out_dir])
+                load_path = 'checkpoints/coco/prior/ETFRes_pre_{}_lr20_adj{}.0_rfs2.5_t1/model_clean_student.pth'.format(
+                    shot, 20 if '30' in shot else 10,
+                )
+                # cfg.LOSS.DISTILL_MAR
+            else:
+                print('Logging modification for pre-training')
+                rfs = cfg.DATALOADER.REPEAT_THRESHOLD * 100 if cfg.DATALOADER.SAMPLER_TRAIN == 'RepeatFactorTrainingSampler' else 0
+                new_out_dir = '/'.join(dir_comp[:3]+[
+                    '{}_pre_{}_lr{}_adj{}_rfs{}_{}'.format(model_key,shot,lr,bk_ratio,rfs,dir_comp[-1])
+                    if cfg.LOSS.TERM == 'adjustment' else
+                    '{}_pre_{}_lr{}_{}'.format(model_key,shot,lr,dir_comp[-1])
+                ])
+                load_path = None
+        new_cfg_list = ['OUTPUT_DIR',new_out_dir] if load_path is None else ['OUTPUT_DIR',new_out_dir,'MODEL.WEIGHTS',load_path]
+        cfg.merge_from_list(new_cfg_list)
     cfg.freeze()
     set_global_cfg(cfg)
     default_setup(cfg, args)

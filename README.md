@@ -1,6 +1,7 @@
+
 # SMILe: Leveraging Submodular Mutual Information For Robust Few-Shot Object Detection
 
-This repo contains the implementation of proposed SMILe framework which introduces a combinatorial viewpoint in Few-Shot Object Detection. SMILe is built upon the codebase [FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags).
+This repo contains the implementation of proposed SMILe framework which introduces a combinatorial viewpoint in Few-Shot Object Detection. SMILe is built upon the codebase [DiGeo](https://github.com/Phoenix-V/DiGeo).
 
 ![SMILe Figure](demo/images/overview_smile.png)
 
@@ -13,133 +14,50 @@ Experiments on popular FSOD benchmarks, PASCAL-VOC and MS-COCO show that our app
 Our experiments also demonstrate better retention of base class performance and up to $2\times$ faster convergence over existing approaches agnostic of the underlying architecture.
 
 ## Installation
-The installation instructions are similar to FsDet and FSCE.
-FsDet is built on [Detectron2](https://github.com/facebookresearch/detectron2). But you don't need to build detectron2 seperately as this codebase is self-contained. You can follow the instructions below to install the dependencies and build `FsDet`. FSCE functionalities are implemented as `class`and `.py` scripts in FsDet which therefore requires no extra build efforts. 
 
-**Dependencies**
-
-* Linux with Python >= 3.6
-* [PyTorch](https://pytorch.org/get-started/locally/) >= 1.3 
-* [torchvision](https://github.com/pytorch/vision/) that matches the PyTorch installation
-* Dependencies: ```pip install -r requirements.txt```
-* pycocotools: ```pip install cython; pip install 'git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI'```
-* [fvcore](https://github.com/facebookresearch/fvcore/): ```pip install 'git+https://github.com/facebookresearch/fvcore'``` 
-* [OpenCV](https://pypi.org/project/opencv-python/), optional, needed by demo and visualization ```pip install opencv-python```
-* GCC >= 4.9
-
-**Build**
-
-```bash
-python setup.py build develop  # you might need sudo
-```
-Note: you may need to rebuild FsDet after reinstalling a different build of PyTorch.
+Our code is developped based upon [TFA](https://github.com/ucbdrive/few-shot-object-detection) and please follow their instructions for library (pytorch, detectron2) installization and dataset preparation.
+Following steps can be followed to achieve the optimal result (based on author suggestions) :
+- Install pillow for image processing : ```pip install pillow=9.1.0```
+- Installing Detectron2 : ```python -m pip install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu113/torch1.10/index.html```
+- ```conda install pytorch==1.10.0 torchvision==0.11.0 torchaudio==0.10.0 cudatoolkit=11.3 -c pytorch -c conda-forge```
+- ```pip install setuptools==59.5.0```
+- For the library/package used for running the code, the repo has been verified on Pytorch 1.7~1.10. For the instillation of detectron2, we install the pre-compiled version following the instructions [here](https://detectron2.readthedocs.io/en/latest/tutorials/install.html).
+- For the dataset preparation, we would recommend to organize the data in a shared storage server in your own GPU clusters (if applicable) and then crerate a soft link towards the root with the destination as 'datasets'.
 
 
+## Getting Started
 
-## Data preparation
+Our framework consists of two steps. We first pre-train the detector with fixed margin (i.e., Prior) and then perform self-distillation to adaptively adjust the margins. 
 
-We adopt the same benchmarks as in FsDet, including three datasets: PASCAL VOC, COCO and LVIS. 
+### Pre-Training (Prior) with Command Line
 
-- [PASCAL VOC](http://host.robots.ox.ac.uk/pascal/VOC/): We use the train/val sets of PASCAL VOC 2007+2012 for training and the test set of PASCAL VOC 2007 for evaluation. We randomly split the 20 object classes into 15 base classes and 5 novel classes, and we consider 3 random splits. The splits can be found in [fsdet/data/datasets/builtin_meta.py](fsdet/data/datasets/builtin_meta.py).
-- [COCO](http://cocodataset.org/): We use COCO 2014 without COCO minival for training and the 5,000 images in COCO minival for testing. We use the 20 object classes that are the same with PASCAL VOC as novel classes and use the rest as base classes.
-- [LVIS](https://www.lvisdataset.org/): We treat the frequent and common classes as the base classes and the rare categories as the novel classes.
-
-The datasets and data splits are built-in, simply make sure the directory structure agrees with [datasets/README.md](datasets/README.md) to launch the program. 
-
-The default seed that is used to report performace in research papers can be found [here](http://dl.yf.io/fs-det/datasets/).
-
-## Train & Inference
-
-### Training
-
-We follow the eaact training procedure of FsDet and we use **random initialization** for novel weights. For a full description of training procedure, see [here](https://github.com/ucbdrive/few-shot-object-detection/blob/master/docs/TRAIN_INST.md).
-
-#### 1. Stage 1: Training base detector.
-
-```
-python tools/train_net.py --num-gpus 4 \
-        --config-file configs/PASCAL_VOC/base-training/R101_FPN_base_training_split1.yml
-```
-
-#### 2. Random initialize  weights for novel classes.
-
-```
-python tools/ckpt_surgery.py \
-        --src1 checkpoints/voc/faster_rcnn/faster_rcnn_R_101_FPN_base1/model_final.pth \
-        --method randinit \
-        --save-dir checkpoints/voc/faster_rcnn/faster_rcnn_R_101_FPN_all1
-```
-
-This step will create a `model_surgery.pth` from` model_final.pth`. 
-
-Don't forget the `--coco` and `--lvis`options when work on the COCO and LVIS datasets, see `ckpt_surgery.py` for all arguments details.
-
-#### 3. Stage 2: Few-Shot Adaptation on novel data.
-
-```
-python tools/train_net.py --num-gpus 4 \
-        --config-file configs/PASCAL_VOC/split1/split1_10shot_FSCE_FLQMI_IoU_0.7_weight_0.5.yaml \
-        --opts MODEL.WEIGHTS WEIGHTS_PATH
-```
-
-Where `WEIGHTS_PATH` points to the `model_surgery.pth` generated from the previous step. Or you can specify it in the configuration yml. 
-
-#### Evaluation
-
-To evaluate the trained models, run
-
+To pre-train a model, select the right config under ``configs`` which has the keyword `pre` in the filename. For your convenience, you can run the code in the sh file by 
 ```angular2html
-python tools/test_net.py --num-gpus 4 \
-        --config-file configs/PASCAL_VOC/split1/split1_10shot_FSCE_FLQMI_IoU_0.7_weight_0.5.yaml \
-        --eval-only
+sh scripts/prior.sh
 ```
 
-Or you can specify `TEST.EVAL_PERIOD` in the configuation yml to evaluate during training. 
+The checkpoints of pre-training can be found [here](https://drive.google.com/drive/folders/1w4tcRiiqYL9Z80lYBQOuNQhZGUl0v4l_?usp=share_link).  We hope our checkpoints can be used as initialization for the future development. To skip the pre-training step, you can directly download the linked folder at the root of this repo and make sure to rename the downloaded folder as `checkpoints`. 
 
+### Prepare the checkpoints for self-distillation stage 
 
-
-### Multiple Runs
-
-For ease of training and evaluation over multiple runs, fsdet provided several helpful scripts in `tools/`.
-
-You can use `tools/run_experiments.py` to do the training and evaluation. For example, to experiment on 30 seeds of the first split of PascalVOC on all shots, run
-
+After pre-training, it is needed to clean the saved checkpoints to be used for the self-distillation stage. The command is 
 ```angular2html
-python tools/run_experiments.py --num-gpus 4 \
-        --shots 1 5 10 --seeds 0 10 --split 1
+python tools/ckpt_clean.py
 ```
 
-### Inference with Visualizations
+### Self-Distillation Stage with Command Line
 
-1. Pick a model (which you have already trained) and its config file, for example, `configs/PASCAL_VOC/split1/split1_10shot_AGCM_FLQMI_IoU_0.7_weight_0.5.yaml`.
-2. We provide `demo.py` that is able to run builtin standard models. Run it with:
+To perform the distillation stage, simply run 
+```angular2html
+sh scripts/distill.sh
 ```
-python demo/demo.py --config-file configs/PASCAL_VOC/split1/split1_10shot_AGCM_FLQMI_IoU_0.7_weight_0.5.yaml \
-  --input input1.jpg input2.jpg \
-  [--other-options]
-  --opts MODEL.WEIGHTS fsdet://coco/tfa_cos_1shot/model_final.pth
+To note, the configuration of distillation inherites the corresponding configuration of pre-training, in particular, the parameters for loss calculation and for ckpt loading & initialization.
+
+## Inference Demo with Pre-trained Models
+
+The pre-trained checkpoints can be found in `Demo` under [here](https://drive.google.com/drive/folders/1w4tcRiiqYL9Z80lYBQOuNQhZGUl0v4l_?usp=share_link). Please put it under `checkpoints/${dataset}/distill`.
+
+The testing command is provided in an sh file and please run
+```angular2html
+sh scripts/demo.sh
 ```
-The configs are made for training, therefore we need to specify `MODEL.WEIGHTS` to a model from model zoo for evaluation.
-This command will run the inference and show visualizations in an OpenCV window.
-
-For details of the command line arguments, see `demo.py -h` or look at its source code
-to understand its behavior. Some common arguments are:
-* To run __on your webcam__, replace `--input files` with `--webcam`.
-* To run __on a video__, replace `--input files` with `--video-input video.mp4`.
-* To run __on cpu__, add `MODEL.DEVICE cpu` after `--opts`.
-* To run on a list/set of images passed to the script, add `--input-file` with a '.txt' file containing a list of image IDs.
-* To run on a list/set of images passed to the script, you also have to pass the `--base=dir` which locates the default path to the images.
-* To save outputs to a directory (for images) or a file (for webcam or video), use `--output`.
-
-### Acknowledgement
-We thank the authors of the below mentioned contributions. 
-Most of our code is adapted from the FSCE approach (CVPR 2021).
-
-Frustratingly Simple Few-Shot Object Detection ([FsDet v0.1](https://github.com/ucbdrive/few-shot-object-detection/tags))
-
-Few-Shot Object Detection via Contrastive Proposal Encoding ([FSCE](https://github.com/megvii-research/FSCE))
-
-Attention Guided Cosine Margin For Overcoming Class-Imbalance in Few-Shot Road Object Detection ([AGCM](https://arxiv.org/abs/2111.06639))
-
-
-

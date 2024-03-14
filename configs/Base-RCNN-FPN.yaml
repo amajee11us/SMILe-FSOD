@@ -1,4 +1,5 @@
 VERSION: 2
+SEED: 0
 MODEL:
   META_ARCHITECTURE: "GeneralizedRCNN"
   BACKBONE:
@@ -26,6 +27,9 @@ MODEL:
     NAME: "FastRCNNConvFCHead"
     NUM_FC: 2
     POOLER_RESOLUTION: 7
+DATASETS:
+  TRAIN: ("coco_2017_train",)
+  TEST: ("coco_2017_val",)
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.02

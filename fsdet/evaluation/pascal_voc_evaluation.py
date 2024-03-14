@@ -1,21 +1,20 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import logging
-import numpy as np
 import os
 import tempfile
 import xml.etree.ElementTree as ET
 from collections import OrderedDict, defaultdict
 from functools import lru_cache
+
+import pdb
+import numpy as np
 import torch
+from detectron2.data import MetadataCatalog
+from detectron2.utils import comm
+from detectron2.utils.logger import create_small_table
 
-from fsdet.data import MetadataCatalog
-from fsdet.utils import comm
-from fsdet.utils.logger import create_small_table
-from fsdet.utils.conf_matrix_plotter import ConfusionMatrix
-
-from .evaluator import DatasetEvaluator
+from fsdet.evaluation.evaluator import DatasetEvaluator
 
 
 class PascalVOCDetectionEvaluator(DatasetEvaluator):
@@ -35,26 +34,26 @@ class PascalVOCDetectionEvaluator(DatasetEvaluator):
         """
         self._dataset_name = dataset_name
         meta = MetadataCatalog.get(dataset_name)
-        self._anno_file_template = os.path.join(meta.dirname, "Annotations", "{}.xml")
-        self._image_set_path = os.path.join(meta.dirname, "ImageSets", "Main", meta.split + ".txt")
+        self._anno_file_template = os.path.join(
+            meta.dirname, "Annotations", "{}.xml"
+        )
+        self._image_set_path = os.path.join(
+            meta.dirname, "ImageSets", "Main", meta.split + ".txt"
+        )
         self._class_names = meta.thing_classes
         # add this two terms for calculating the mAP of different subset
-        try:
-            self._base_classes = meta.base_classes
-            self._novel_classes = meta.novel_classes
-        except AttributeError:
-            self._base_classes = meta.thing_classes
-            self._novel_classes = None
+        self._base_classes = meta.base_classes
+        self._novel_classes = meta.novel_classes
+        # pdb.set_trace()
         assert meta.year in [2007, 2012], meta.year
         self._is_2007 = meta.year == 2007
         self._cpu_device = torch.device("cpu")
         self._logger = logging.getLogger(__name__)
 
-        # plotter for confusion matrices
-        self.confusion_matrix = ConfusionMatrix(self._dataset_name, len(self._class_names))
-
     def reset(self):
-        self._predictions = defaultdict(list)  # class name -> list of prediction strings
+        self._predictions = defaultdict(
+            list
+        )  # class name -> list of prediction strings
 
     def process(self, inputs, outputs):
         for input, output in zip(inputs, outputs):
@@ -71,21 +70,6 @@ class PascalVOCDetectionEvaluator(DatasetEvaluator):
                 self._predictions[cls].append(
                     f"{image_id} {score:.3f} {xmin:.1f} {ymin:.1f} {xmax:.1f} {ymax:.1f}"
                 )
-            # Preprocess the detections
-            detections = np.hstack([
-                boxes,
-                np.array(scores).reshape(-1, 1),
-                np.array(classes).reshape(-1, 1)
-            ])
-            # Retrieve ground truth annotations for the current image
-            gt_annotations = parse_rec(self._anno_file_template.format(image_id))
-            labels = np.array([
-                [self._class_names.index(obj["name"]), obj["bbox"][0], obj["bbox"][1], obj["bbox"][2], obj["bbox"][3]]
-                for obj in gt_annotations if not obj["difficult"]
-            ])
-
-            # Update the confusion matrix
-            self.confusion_matrix.process_batch(detections, labels)
 
     def evaluate(self):
         """
@@ -132,46 +116,60 @@ class PascalVOCDetectionEvaluator(DatasetEvaluator):
                     )
                     aps[thresh].append(ap * 100)
 
-                    if self._base_classes is not None and cls_name in self._base_classes:
+                    if (
+                        self._base_classes is not None
+                        and cls_name in self._base_classes
+                    ):
                         aps_base[thresh].append(ap * 100)
                         exist_base = True
 
-                    if self._novel_classes is not None and cls_name in self._novel_classes:
+                    if (
+                        self._novel_classes is not None
+                        and cls_name in self._novel_classes
+                    ):
                         aps_novel[thresh].append(ap * 100)
                         exist_novel = True
 
         ret = OrderedDict()
         mAP = {iou: np.mean(x) for iou, x in aps.items()}
-        ret["bbox"] = {"AP": np.mean(list(mAP.values())), "AP50": mAP[50], "AP75": mAP[75]}
+        ret["bbox"] = {
+            "AP": np.mean(list(mAP.values())),
+            "AP50": mAP[50],
+            "AP75": mAP[75],
+        }
 
         # adding evaluation of the base and novel classes
         if exist_base:
             mAP_base = {iou: np.mean(x) for iou, x in aps_base.items()}
             ret["bbox"].update(
-                {"bAP": np.mean(list(mAP_base.values())), "bAP50": mAP_base[50],
-                 "bAP75": mAP_base[75]}
+                {
+                    "bAP": np.mean(list(mAP_base.values())),
+                    "bAP50": mAP_base[50],
+                    "bAP75": mAP_base[75],
+                }
             )
 
         if exist_novel:
             mAP_novel = {iou: np.mean(x) for iou, x in aps_novel.items()}
-            ret["bbox"].update({
-                "nAP": np.mean(list(mAP_novel.values())), "nAP50": mAP_novel[50],
-                "nAP75": mAP_novel[75]
-            })
+            ret["bbox"].update(
+                {
+                    "nAP": np.mean(list(mAP_novel.values())),
+                    "nAP50": mAP_novel[50],
+                    "nAP75": mAP_novel[75],
+                }
+            )
 
         # write per class AP to logger
-        per_class_res = {self._class_names[idx]: ap for idx, ap in enumerate(aps[50])}
+        per_class_res = {
+            self._class_names[idx]: ap for idx, ap in enumerate(aps[50])
+        }
 
-        self._logger.info("Evaluate per-class mAP50:\n"+create_small_table(per_class_res))
-        self._logger.info("Evaluate overall bbox:\n"+create_small_table(ret["bbox"]))
-
-        # Plot the confusion matrix
-        confusion_matrix = self.confusion_matrix.return_matrix()
-        # print("Saving Confusion Matrix at :{}\n".format("checkpoints/voc/conf_matrices/meta_conf.npy"))
-        # TODO : Fix the path for saving the confusion matrix
-        # np.save("checkpoints/voc/conf_matrices/meta_conf_{}.npy".format(self.confusion_matrix.count), confusion_matrix)
-        self.confusion_matrix.save_conf_matrix()
-
+        self._logger.info(
+            "Evaluate per-class mAP50:\n" + create_small_table(per_class_res)
+        )
+        self._logger.info(
+            "Evaluate overall bbox:\n" + create_small_table(ret["bbox"])
+        )
         return ret
 
 
@@ -243,7 +241,14 @@ def voc_ap(rec, prec, use_07_metric=False):
     return ap
 
 
-def voc_eval(detpath, annopath, imagesetfile, classname, ovthresh=0.5, use_07_metric=False):
+def voc_eval(
+    detpath,
+    annopath,
+    imagesetfile,
+    classname,
+    ovthresh=0.5,
+    use_07_metric=False,
+):
     """rec, prec, ap = voc_eval(detpath,
                                 annopath,
                                 imagesetfile,
@@ -272,7 +277,7 @@ def voc_eval(detpath, annopath, imagesetfile, classname, ovthresh=0.5, use_07_me
     with open(imagesetfile, "r") as f:
         lines = f.readlines()
     imagenames = [x.strip() for x in lines]
-
+    # pdb.set_trace()
     # load annots
     recs = {}
     for imagename in imagenames:
@@ -288,7 +293,11 @@ def voc_eval(detpath, annopath, imagesetfile, classname, ovthresh=0.5, use_07_me
         # difficult = np.array([False for x in R]).astype(bool)  # treat all "difficult" as GT
         det = [False] * len(R)
         npos = npos + sum(~difficult)
-        class_recs[imagename] = {"bbox": bbox, "difficult": difficult, "det": det}
+        class_recs[imagename] = {
+            "bbox": bbox,
+            "difficult": difficult,
+            "det": det,
+        }
 
     # read dets
     detfile = detpath.format(classname)
@@ -298,7 +307,9 @@ def voc_eval(detpath, annopath, imagesetfile, classname, ovthresh=0.5, use_07_me
     splitlines = [x.strip().split(" ") for x in lines]
     image_ids = [x[0] for x in splitlines]
     confidence = np.array([float(x[1]) for x in splitlines])
-    BB = np.array([[float(z) for z in x[2:]] for x in splitlines]).reshape(-1, 4)
+    BB = np.array([[float(z) for z in x[2:]] for x in splitlines]).reshape(
+        -1, 4
+    )
 
     # sort by confidence
     sorted_ind = np.argsort(-confidence)
@@ -329,7 +340,8 @@ def voc_eval(detpath, annopath, imagesetfile, classname, ovthresh=0.5, use_07_me
             # union
             uni = (
                 (bb[2] - bb[0] + 1.0) * (bb[3] - bb[1] + 1.0)
-                + (BBGT[:, 2] - BBGT[:, 0] + 1.0) * (BBGT[:, 3] - BBGT[:, 1] + 1.0)
+                + (BBGT[:, 2] - BBGT[:, 0] + 1.0)
+                * (BBGT[:, 3] - BBGT[:, 1] + 1.0)
                 - inters
             )
 

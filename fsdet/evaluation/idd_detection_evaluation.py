@@ -10,11 +10,11 @@ from collections import OrderedDict, defaultdict
 from functools import lru_cache
 import torch
 
-from fsdet.data import MetadataCatalog
-from fsdet.utils import comm
-from fsdet.utils.logger import create_small_table
+from detectron2.data import MetadataCatalog
+from detectron2.utils import comm
+from detectron2.utils.logger import create_small_table
 
-from .evaluator import DatasetEvaluator
+from fsdet.evaluation.evaluator import DatasetEvaluator
 
 
 class IDDDetectionEvaluator(DatasetEvaluator):
