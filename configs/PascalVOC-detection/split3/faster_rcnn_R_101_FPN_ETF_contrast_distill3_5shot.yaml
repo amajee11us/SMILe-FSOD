@@ -1,0 +1,26 @@
+_BASE_: "faster_rcnn_R_101_FPN_ETF_pre3_5shot.yaml"
+MODEL:
+  BACKBONE:
+    FREEZE: True
+  PROPOSAL_GENERATOR:
+    FREEZE: True
+  ROI_HEADS:
+    NAME: "DistillMarginContrastROIHeads"
+    NUM_CLASSES: 20
+    BATCH_SIZE_PER_IMAGE: 256
+  ROI_BOX_HEAD:
+    CONTRASTIVE_BRANCH:
+      LOSS_VERSION: "FL+FLQMI"
+      TEMPERATURE: 0.7
+      LOSS_WEIGHT: 0.5
+      DECAY:
+        ENABLED: True
+        STEPS: [6000, 10000]
+        RATE: 0.5
+      IOU_THRESHOLD: 0.7  # high credibility proposals provide consistency
+
+LOSS:
+  ADJUST_STAGE: 'distill'
+SOLVER:
+  BASE_LR: 0.04
+OUTPUT_DIR: "checkpoints/voc/contrast_distill/t1"
